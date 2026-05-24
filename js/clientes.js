@@ -77,7 +77,13 @@ function renderCli() {
 
     return `<tr>
       <td><span class="cb">${c.id}</span></td>
-      <td><strong>${c.nome}</strong>${c.obs ? `<div style="font-size:11px;color:var(--text3);margin-top:2px;">${String(c.obs).slice(0,40)}${String(c.obs).length>40?'…':''}</div>` : ''}</td>
+      <td>
+        <strong>${c.nome}</strong>
+        ${c.obs ? `<div class="obs-mini" style="margin-top:4px;display:flex;align-items:flex-start;gap:6px;">
+          <span style="flex:1;">💬 ${String(c.obs)}</span>
+          ${(USER.role === 'proprietario' || USER.role === 'admin') ? `<button class="btn bd bsm" style="padding:1px 6px;font-size:10px;flex-shrink:0;" onclick="limparObs('${c.id}')">✕</button>` : ''}
+        </div>` : ''}
+      </td>
       <td style="font-size:12px;color:var(--text2);max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${addr(c)}">${addr(c)}</td>
       <td><span class="sb">${c.setor||'-'}</span></td>
       <td style="font-size:12px;white-space:nowrap;">${c.tel||'-'}</td>
@@ -282,6 +288,18 @@ async function delCli(id) {
   localStorage.setItem('eps_cli', JSON.stringify(CLI));
   renderAll();
   toast('🗑️ Cliente removido.');
+}
+
+async function limparObs(id) {
+  const c = CLI.find(x => x.id === id);
+  if (!c) return;
+  const dados = { ...c, obs: '' };
+  await sheetPost('editCliente', dados);
+  const idx = CLI.findIndex(x => x.id === id);
+  if (idx >= 0) CLI[idx] = normalizarCliente(dados);
+  localStorage.setItem('eps_cli', JSON.stringify(CLI));
+  renderCli();
+  toast(`✅ Observação de ${c.nome} removida.`);
 }
 
 // ─────────────────────────────────────────────
