@@ -1,0 +1,1714 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>CobraSetor — Gestão de Cobranças</title>
+
+<!-- PWA -->
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#ff6b00">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="CobraSetor">
+<link rel="apple-touch-icon" href="icon-192.png">
+
+<!-- Fonts -->
+<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Exo+2:wght@300;400;500;600&display=swap" rel="stylesheet">
+
+<style>
+/* ═══════════════════════════════════════════
+   VARIÁVEIS GLOBAIS
+═══════════════════════════════════════════ */
+:root {
+  --bg:      #0a0a0a;
+  --bg2:     #111111;
+  --bg3:     #1a1a1a;
+  --card:    #141414;
+  --border:  #2a2a2a;
+  --accent:  #ff6b00;
+  --accent2: #ff9500;
+  --accent3: #ffb347;
+  --success: #00e87a;
+  --danger:  #ff3b3b;
+  --warn:    #ffb020;
+  --info:    #00cfff;
+  --purple:  #c87dff;
+  --text:    #f0f0f0;
+  --text2:   #888888;
+  --text3:   #444444;
+  --sidebar-w: 224px;
+  --radius:  10px;
+  --transition: .18s ease;
+}
+
+/* ── RESET ── */
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+html, body {
+  height: 100%; min-height: 100%;
+  font-family: 'Exo 2', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+a { color: inherit; text-decoration: none; }
+button { font-family: 'Exo 2', sans-serif; cursor: pointer; }
+
+/* ═══════════════════════════════════════════
+   TELA DE LOGIN
+═══════════════════════════════════════════ */
+#login-screen {
+  position: fixed; inset: 0;
+  background: var(--bg);
+  z-index: 1000;
+  display: flex; align-items: center; justify-content: center;
+  padding: 20px;
+}
+.login-bg-glow {
+  position: absolute; inset: 0; overflow: hidden; pointer-events: none;
+}
+.login-bg-glow::before {
+  content: '';
+  position: absolute;
+  top: -200px; left: 50%; transform: translateX(-50%);
+  width: 600px; height: 600px;
+  background: radial-gradient(circle, rgba(255,107,0,.12) 0%, transparent 65%);
+  border-radius: 50%;
+}
+.login-box {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  padding: 36px 30px 28px;
+  width: 100%; max-width: 400px;
+  position: relative;
+  box-shadow: 0 24px 80px rgba(0,0,0,.6);
+  animation: fadeUp .4s ease both;
+}
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.login-logo {
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 48px; font-weight: 700;
+  color: var(--accent);
+  letter-spacing: 6px;
+  text-align: center; line-height: 1;
+  margin-bottom: 2px;
+}
+.login-sub {
+  font-size: 10px; color: var(--text3);
+  letter-spacing: 4px; text-transform: uppercase;
+  text-align: center; margin-bottom: 32px;
+}
+.login-field { margin-bottom: 14px; }
+.login-label {
+  display: block;
+  font-size: 10px; color: var(--text3);
+  letter-spacing: 1px; text-transform: uppercase;
+  margin-bottom: 6px;
+}
+.login-input {
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 14px;
+  color: var(--text);
+  font-family: 'Exo 2', sans-serif;
+  font-size: 14px;
+  outline: none; width: 100%;
+  transition: border-color var(--transition);
+}
+.login-input:focus { border-color: var(--accent); }
+.login-btn {
+  width: 100%; padding: 13px;
+  background: var(--accent); color: #07091a;
+  border: none; border-radius: 8px;
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 17px; font-weight: 700;
+  letter-spacing: 2.5px;
+  margin-top: 8px;
+  transition: filter var(--transition), transform var(--transition);
+}
+.login-btn:hover { filter: brightness(1.12); }
+.login-btn:active { transform: scale(.98); }
+.login-err {
+  color: var(--danger); font-size: 12px;
+  text-align: center; min-height: 18px;
+  margin-top: 10px;
+}
+.login-config {
+  font-size: 11px; color: var(--text3);
+  text-align: center; margin-top: 20px;
+  cursor: pointer; text-decoration: underline;
+  transition: color var(--transition);
+}
+.login-config:hover { color: var(--text2); }
+
+/* ═══════════════════════════════════════════
+   CONFIG SHEETS
+═══════════════════════════════════════════ */
+#config-screen {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,.88);
+  z-index: 999;
+  display: none; align-items: center; justify-content: center;
+  padding: 20px;
+}
+#config-screen.open { display: flex; }
+.config-box {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 28px;
+  width: 100%; max-width: 520px;
+  animation: fadeUp .3s ease both;
+}
+.config-box h2 {
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 19px; color: var(--accent);
+  letter-spacing: 1px; margin-bottom: 8px;
+}
+.config-box p {
+  font-size: 12px; color: var(--text2);
+  margin-bottom: 16px; line-height: 1.8;
+}
+.config-step {
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px 14px;
+  margin-bottom: 10px;
+  font-size: 12px; line-height: 1.9;
+}
+.config-step b { color: var(--accent); }
+.config-step code {
+  background: rgba(255,107,0,.12);
+  color: var(--accent2);
+  padding: 1px 6px; border-radius: 4px;
+  font-size: 11px; word-break: break-all;
+}
+
+/* ═══════════════════════════════════════════
+   SIDEBAR
+═══════════════════════════════════════════ */
+.sidebar {
+  width: var(--sidebar-w);
+  background: var(--bg2);
+  border-right: 1px solid var(--border);
+  display: flex; flex-direction: column;
+  position: fixed; top: 0; left: 0; bottom: 0;
+  z-index: 200;
+  transition: transform .28s cubic-bezier(.4,0,.2,1);
+  overflow-y: auto; overflow-x: hidden;
+}
+.logo-wrap {
+  padding: 20px 18px 16px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+/* Logo do proprietário (imagem) */
+.logo-prop-img {
+  max-width: 100%; max-height: 52px;
+  object-fit: contain; display: none;
+  margin-bottom: 4px;
+  border-radius: 6px;
+}
+/* Logo texto CobraSetor */
+.logo-name {
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 28px; font-weight: 700;
+  color: var(--accent);
+  letter-spacing: 4px; line-height: 1;
+}
+.logo-sub {
+  font-size: 9px; color: var(--text3);
+  letter-spacing: 2.5px; text-transform: uppercase;
+  margin-top: 3px;
+}
+.user-badge {
+  margin-top: 10px;
+  display: flex; align-items: center; gap: 6px;
+  flex-wrap: wrap;
+}
+.user-role {
+  font-size: 10px; font-weight: 700;
+  padding: 2px 8px; border-radius: 6px;
+  letter-spacing: .5px;
+}
+.role-admin     { background: rgba(255,107,0,.18); color: var(--accent2); }
+.role-prop      { background: rgba(0,232,122,.13); color: var(--success); }
+.role-cobrador  { background: rgba(0,207,255,.13); color: var(--info); }
+.user-nome-sb   { font-size: 11px; color: var(--text2); }
+
+/* Navegação */
+.nav { flex: 1; padding: 10px 0; }
+.ni {
+  display: flex; align-items: center; gap: 10px;
+  padding: 12px 18px;
+  cursor: pointer;
+  color: var(--text2); font-size: 13px; font-weight: 500;
+  border-left: 3px solid transparent;
+  transition: all var(--transition);
+  user-select: none; position: relative;
+}
+.ni:hover { color: var(--text); background: rgba(255,107,0,.05); }
+.ni.active {
+  color: var(--accent);
+  background: rgba(255,107,0,.08);
+  border-left-color: var(--accent);
+}
+.ni .ico { font-size: 16px; width: 20px; text-align: center; flex-shrink: 0; }
+.ni-sep { border-top: 1px solid var(--border); margin: 6px 0; }
+.nbadge {
+  margin-left: auto;
+  background: var(--danger); color: #fff;
+  font-size: 10px; padding: 2px 6px;
+  border-radius: 9px; font-weight: 700;
+}
+.sfoot {
+  padding: 14px 18px;
+  border-top: 1px solid var(--border);
+  font-size: 10px; color: var(--text3);
+  flex-shrink: 0; line-height: 1.8;
+}
+#clock { color: var(--accent); font-weight: 700; font-size: 12px; }
+
+/* ═══════════════════════════════════════════
+   TOPBAR MOBILE
+═══════════════════════════════════════════ */
+.mob-bar {
+  display: none;
+  position: fixed; top: 0; left: 0; right: 0;
+  height: 54px;
+  background: var(--bg2);
+  border-bottom: 1px solid var(--border);
+  z-index: 300;
+  align-items: center;
+  padding: 0 14px; gap: 8px;
+}
+.hbg {
+  background: none; border: none;
+  color: var(--text); font-size: 22px;
+  padding: 4px; line-height: 1;
+}
+.mob-title {
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 22px; font-weight: 700;
+  color: var(--accent); letter-spacing: 3px;
+}
+.ovl {
+  display: none; position: fixed; inset: 0;
+  background: rgba(0,0,0,.65); z-index: 199;
+}
+.ovl.open { display: block; }
+
+/* ═══════════════════════════════════════════
+   MAIN CONTENT
+═══════════════════════════════════════════ */
+.main {
+  margin-left: var(--sidebar-w);
+  padding: 20px;
+  min-width: 0;
+  min-height: 100vh;
+}
+.strip {
+  display: flex; align-items: center; gap: 10px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px 18px;
+  margin-bottom: 18px;
+  flex-wrap: wrap;
+}
+.strip-title {
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 15px; font-weight: 600;
+  color: var(--accent);
+}
+.strip-date {
+  font-size: 12px; color: var(--text2);
+  margin-left: auto;
+}
+
+/* Seções */
+.sec { display: none; }
+.sec.active { display: block; }
+
+/* Page header */
+.ph {
+  display: flex; align-items: center;
+  justify-content: space-between;
+  margin-bottom: 18px; flex-wrap: wrap; gap: 10px;
+}
+.ptitle {
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 24px; font-weight: 700; letter-spacing: .5px;
+}
+.ptitle span { color: var(--accent); }
+
+/* ═══════════════════════════════════════════
+   SYNC BAR
+═══════════════════════════════════════════ */
+.sync-bar {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 11px; color: var(--text3);
+  margin-bottom: 16px;
+  padding: 8px 14px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  flex-wrap: wrap;
+}
+.sync-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%; flex-shrink: 0;
+}
+.sync-dot.ok   { background: var(--success); }
+.sync-dot.sync { background: var(--warn); animation: pulse .8s infinite; }
+.sync-dot.err  { background: var(--danger); }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.25} }
+
+/* ═══════════════════════════════════════════
+   STATS GRID (DASHBOARD)
+═══════════════════════════════════════════ */
+.sgrid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 13px; margin-bottom: 18px;
+}
+.sc {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px 18px;
+  position: relative; overflow: hidden;
+  transition: border-color var(--transition);
+}
+.sc:hover { border-color: var(--border); }
+.sc::before {
+  content: ''; position: absolute;
+  top: 0; left: 0; right: 0; height: 2px;
+}
+.sc.c-orange::before { background: var(--accent); }
+.sc.c-red::before    { background: var(--danger); }
+.sc.c-warn::before   { background: var(--warn); }
+.sc.c-green::before  { background: var(--success); }
+.sc.c-info::before   { background: var(--info); }
+.slbl {
+  font-size: 11px; color: var(--text2);
+  letter-spacing: 1px; text-transform: uppercase;
+  font-weight: 600;
+  margin-bottom: 7px;
+}
+.sval {
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 26px; font-weight: 700; line-height: 1;
+}
+.sc.c-orange .sval { color: var(--accent); }
+.sc.c-red .sval    { color: var(--danger); }
+.sc.c-warn .sval   { color: var(--warn); }
+.sc.c-green .sval  { color: var(--success); }
+.sc.c-info .sval   { color: var(--info); }
+.ssub { font-size: 11px; color: var(--text2); margin-top: 4px; }
+
+/* ═══════════════════════════════════════════
+   TABLE CARDS
+═══════════════════════════════════════════ */
+.tcard {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+  margin-bottom: 18px;
+}
+.thead2 {
+  padding: 13px 18px;
+  border-bottom: 1px solid var(--border);
+  display: flex; align-items: center;
+  gap: 10px; flex-wrap: wrap;
+}
+.ttitle {
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 14px; font-weight: 600;
+  letter-spacing: 1px; flex: 1;
+  white-space: nowrap;
+}
+.sinp {
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 7px 12px;
+  color: var(--text);
+  font-family: 'Exo 2', sans-serif;
+  font-size: 13px; outline: none;
+  width: 180px;
+  transition: border-color var(--transition);
+}
+.sinp:focus { border-color: var(--accent); }
+.ssel {
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 7px 10px;
+  color: var(--text);
+  font-family: 'Exo 2', sans-serif;
+  font-size: 12px; outline: none;
+  cursor: pointer;
+  transition: border-color var(--transition);
+}
+.ssel:focus { border-color: var(--accent); }
+.ssel option { background: var(--bg3); color: var(--text); }
+.twrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+table { width: 100%; border-collapse: collapse; min-width: 560px; }
+th {
+  padding: 9px 14px;
+  text-align: left;
+  font-size: 9px; color: var(--text3);
+  letter-spacing: 1.2px; text-transform: uppercase;
+  background: var(--bg3);
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap; font-weight: 600;
+}
+td {
+  padding: 11px 14px;
+  font-size: 13px;
+  border-bottom: 1px solid rgba(42,42,42,.5);
+  vertical-align: middle;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: rgba(255,107,0,.025); }
+
+/* ═══════════════════════════════════════════
+   BADGES
+═══════════════════════════════════════════ */
+.cb {
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 12px; font-weight: 700;
+  color: var(--accent);
+  background: rgba(255,107,0,.12);
+  padding: 3px 8px; border-radius: 6px;
+  letter-spacing: 1px; white-space: nowrap;
+}
+.sb {
+  font-size: 11px; font-weight: 600;
+  padding: 2px 8px; border-radius: 6px;
+  background: rgba(255,107,0,.1); color: var(--accent2);
+  white-space: nowrap;
+}
+.pb-y { color: var(--success); font-size: 11px; font-weight: 600; background: rgba(0,232,122,.1); padding: 2px 7px; border-radius: 6px; }
+.pb-n { color: var(--text3); font-size: 11px; background: rgba(255,255,255,.04); padding: 2px 7px; border-radius: 6px; }
+.nvb  { font-size: 11px; color: var(--info); background: rgba(0,207,255,.08); padding: 2px 7px; border-radius: 6px; white-space: nowrap; }
+
+/* Status badges */
+.st-ok  { color: var(--success); font-size: 12px; font-weight: 600; }
+.st-hj  { color: var(--warn);    font-size: 12px; font-weight: 600; }
+.st-la  { color: var(--danger);  font-size: 12px; font-weight: 600; }
+.st-ad  { color: var(--purple);  font-size: 12px; font-weight: 600; }
+.st-rm  { color: var(--info);    font-size: 12px; font-weight: 600; }
+.st-in  { color: var(--text3);   font-size: 12px; font-weight: 600; }
+.late30 {
+  background: var(--danger); color: #fff;
+  font-size: 10px; font-weight: 700;
+  padding: 2px 6px; border-radius: 4px;
+  letter-spacing: .5px;
+}
+/* Forma de pagamento */
+.fp-din  { color: var(--warn);    font-size: 11px; font-weight: 700; }
+.fp-cart { color: var(--info);    font-size: 11px; font-weight: 700; }
+.fp-pixp { color: var(--success); font-size: 11px; font-weight: 700; }
+.fp-pixa { color: var(--purple);  font-size: 11px; font-weight: 700; }
+
+/* ═══════════════════════════════════════════
+   BOTÕES
+═══════════════════════════════════════════ */
+.btn {
+  padding: 8px 14px;
+  border-radius: 8px; border: none;
+  font-family: 'Exo 2', sans-serif;
+  font-size: 12px; font-weight: 600;
+  transition: all var(--transition);
+  display: inline-flex; align-items: center;
+  gap: 5px; white-space: nowrap; cursor: pointer;
+}
+.btn:active { transform: scale(.97); }
+.bp  { background: var(--accent); color: #07091a; }
+.bp:hover  { filter: brightness(1.1); }
+.bd  { background: rgba(255,59,59,.13); color: var(--danger); border: 1px solid rgba(255,59,59,.28); }
+.bd:hover  { background: rgba(255,59,59,.22); }
+.bs  { background: rgba(0,232,122,.13); color: var(--success); border: 1px solid rgba(0,232,122,.28); }
+.bs:hover  { background: rgba(0,232,122,.22); }
+.bw  { background: rgba(255,176,32,.13); color: var(--warn); border: 1px solid rgba(255,176,32,.28); }
+.bw:hover  { background: rgba(255,176,32,.22); }
+.bc  { background: var(--bg3); color: var(--text2); border: 1px solid var(--border); }
+.bc:hover  { border-color: var(--text2); }
+.bi  { background: rgba(0,207,255,.13); color: var(--info); border: 1px solid rgba(0,207,255,.28); }
+.bi:hover  { background: rgba(0,207,255,.22); }
+.bsm { padding: 5px 9px; font-size: 11px; }
+.bxs { padding: 3px 7px; font-size: 10px; }
+.btn:disabled { opacity: .5; cursor: not-allowed; }
+
+/* ═══════════════════════════════════════════
+   FILTROS / TABS
+═══════════════════════════════════════════ */
+.frow {
+  display: flex; align-items: center;
+  gap: 8px; margin-bottom: 14px; flex-wrap: wrap;
+}
+.ftab {
+  padding: 7px 15px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg3); color: var(--text2);
+  cursor: pointer; font-size: 13px; font-weight: 500;
+  transition: all var(--transition); white-space: nowrap;
+}
+.ftab:hover { color: var(--text); border-color: var(--text3); }
+.ftab.active {
+  background: rgba(255,107,0,.13);
+  border-color: var(--accent);
+  color: var(--accent); font-weight: 600;
+}
+.fsetor-wrap {
+  display: flex; align-items: center; gap: 8px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 6px 13px;
+}
+.fsetor-lbl {
+  font-size: 10px; color: var(--text3);
+  letter-spacing: .5px; text-transform: uppercase;
+  white-space: nowrap;
+}
+.fsetor-sel {
+  background: transparent; border: none;
+  color: var(--accent);
+  font-family: 'Exo 2', sans-serif;
+  font-size: 13px; font-weight: 600;
+  outline: none; cursor: pointer; min-width: 110px;
+}
+.fsetor-sel option { background: var(--bg3); color: var(--text); }
+.fsetor-badge {
+  font-size: 11px; color: var(--text2);
+  background: rgba(255,107,0,.07);
+  border: 1px solid rgba(255,107,0,.2);
+  border-radius: 6px; padding: 3px 10px;
+  white-space: nowrap;
+}
+.ftab-group-label {
+  font-size: 10px; color: var(--text3);
+  text-transform: uppercase; letter-spacing: .5px;
+  margin-bottom: 6px; padding-left: 2px;
+}
+
+/* ═══════════════════════════════════════════
+   CARDS DE COBRANÇA
+═══════════════════════════════════════════ */
+.clist { display: flex; flex-direction: column; gap: 10px; }
+.ccard {
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px;
+  display: flex; gap: 12px;
+  align-items: flex-start; flex-wrap: wrap;
+  transition: border-color var(--transition);
+}
+.ccard.late  { border-left: 3px solid var(--danger); }
+.ccard.today { border-left: 3px solid var(--warn); }
+.ccard.remar { border-left: 3px solid var(--info); }
+.ccard.late30-card { border-left: 4px solid var(--danger); background: rgba(255,59,59,.04); }
+.cinfo { flex: 1; min-width: 200px; }
+.cval {
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 22px; font-weight: 700;
+  color: var(--accent3); white-space: nowrap;
+  align-self: center;
+}
+.cbtns {
+  display: flex; flex-direction: column;
+  gap: 5px; align-self: flex-start;
+  flex-shrink: 0;
+}
+
+/* ═══════════════════════════════════════════
+   RELATÓRIO — CARDS
+═══════════════════════════════════════════ */
+.rgrid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 12px; margin-bottom: 16px;
+}
+.rcard {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px; text-align: center;
+}
+.rper {
+  font-size: 11px; color: var(--text2);
+  letter-spacing: 1px; text-transform: uppercase;
+  font-weight: 600;
+  margin-bottom: 7px;
+}
+.rval {
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 26px; font-weight: 700;
+}
+.rcnt { font-size: 11px; color: var(--text2); margin-top: 5px; }
+.rcard.c-green .rval  { color: var(--success); }
+.rcard.c-red   .rval  { color: var(--danger); }
+.rcard.c-saldo .rval  { color: var(--accent3); }
+.rcard.c-orange .rval { color: var(--accent); }
+.rcard.c-warn .rval   { color: var(--warn); }
+
+/* Forma cards (pagamentos por forma) */
+.forma-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px; margin-bottom: 16px;
+}
+.forma-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+}
+.forma-lbl {
+  font-size: 10px; color: var(--text3);
+  letter-spacing: .8px; text-transform: uppercase;
+  margin-bottom: 5px;
+}
+.forma-val {
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 20px; font-weight: 700;
+}
+.forma-cnt { font-size: 11px; color: var(--text3); margin-top: 2px; }
+
+/* ═══════════════════════════════════════════
+   MODAIS
+═══════════════════════════════════════════ */
+.mbg {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,.84);
+  z-index: 800;
+  display: none; align-items: flex-start;
+  justify-content: center;
+  padding: 16px;
+  overflow-y: auto;
+}
+.mbg.open { display: flex; }
+.modal {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 24px;
+  width: 100%; max-width: 560px;
+  margin: auto;
+  animation: fadeUp .25s ease both;
+}
+.modal h2 {
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 18px; font-weight: 700;
+  letter-spacing: 1px; margin-bottom: 18px;
+  color: var(--accent);
+}
+.fgrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.fg { display: flex; flex-direction: column; gap: 5px; }
+.fg.full { grid-column: 1/-1; }
+.fg.third { grid-column: span 1; }
+label {
+  font-size: 11px; color: var(--text2);
+  font-weight: 600; letter-spacing: .4px;
+}
+input, select, textarea {
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 9px 12px;
+  color: var(--text);
+  font-family: 'Exo 2', sans-serif;
+  font-size: 13px; outline: none; width: 100%;
+  transition: border-color var(--transition);
+}
+input::placeholder, textarea::placeholder { color: var(--text3); }
+input:focus, select:focus, textarea:focus { border-color: var(--accent); }
+select option { background: var(--bg3); color: var(--text); }
+textarea { resize: vertical; min-height: 60px; }
+.fact {
+  display: flex; gap: 10px;
+  justify-content: flex-end;
+  margin-top: 18px; flex-wrap: wrap;
+}
+/* CEP row */
+.cep-row {
+  display: grid;
+  grid-template-columns: 140px 1fr;
+  gap: 10px; align-items: start;
+}
+.cep-hint {
+  font-size: 11px; margin-top: 4px;
+  min-height: 14px; line-height: 1.5;
+  word-break: break-word;
+}
+/* Payment option buttons */
+.popts { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 6px; }
+.pbtn {
+  padding: 7px 13px; border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg3); color: var(--text2);
+  cursor: pointer; font-size: 12px;
+  font-family: 'Exo 2', sans-serif; font-weight: 500;
+  transition: all var(--transition);
+}
+.pbtn:hover { border-color: var(--text3); color: var(--text); }
+.pbtn.sel {
+  background: rgba(255,107,0,.14);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+/* Checkboxes setores (cobrador modal) */
+.setores-check {
+  display: flex; flex-direction: column;
+  gap: 8px; max-height: 160px;
+  overflow-y: auto; padding: 10px;
+  background: var(--bg3); border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.setor-check-item {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 13px; color: var(--text); cursor: pointer;
+}
+.setor-check-item input[type=checkbox] {
+  width: 16px; height: 16px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+/* Seção desfazer pagamento */
+.desfazer-section {
+  margin-top: 14px;
+  border-top: 1px solid var(--border);
+  padding-top: 14px;
+  display: none;
+}
+.desfazer-section.show { display: block; }
+/* Info box no modal */
+.modal-info {
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 13px 14px;
+  margin-bottom: 16px;
+  font-size: 13px; line-height: 2;
+}
+
+/* ═══════════════════════════════════════════
+   LOADING / EMPTY / TOAST
+═══════════════════════════════════════════ */
+.loading {
+  display: flex; align-items: center;
+  justify-content: center;
+  padding: 40px; gap: 12px;
+  color: var(--text2); font-size: 13px;
+}
+.spinner {
+  width: 20px; height: 20px;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin .7s linear infinite;
+  flex-shrink: 0;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.empty {
+  padding: 40px; text-align: center;
+  color: var(--text3); font-size: 14px;
+}
+.eico { font-size: 36px; margin-bottom: 10px; }
+.toast {
+  position: fixed; bottom: 20px; right: 20px;
+  background: var(--card);
+  border: 1px solid var(--accent);
+  border-radius: 10px;
+  padding: 13px 18px;
+  font-size: 13px; z-index: 9999;
+  display: none; gap: 9px; align-items: center;
+  box-shadow: 0 4px 24px rgba(255,107,0,.18);
+  max-width: 340px;
+}
+.toast.show  { display: flex; animation: tIn .3s ease; }
+.toast.err   { border-color: var(--danger); }
+.toast.ok    { border-color: var(--success); }
+@keyframes tIn { from{transform:translateX(30px);opacity:0} to{transform:none;opacity:1} }
+
+/* ═══════════════════════════════════════════
+   MISC
+═══════════════════════════════════════════ */
+.hidden     { display: none !important; }
+.prop-only  {}  /* controlado via JS */
+.admin-only {}
+.cobr-only  {}
+.sep-label {
+  font-size: 10px; color: var(--text3);
+  text-transform: uppercase; letter-spacing: .5px;
+  margin: 4px 0 6px; padding-left: 2px;
+}
+/* Tabs donos/proprietarios */
+.tab-panels > div { display: none; }
+.tab-panels > div.active { display: block; }
+/* Resumo por setor (dashboard) */
+.resumo-setor-wrap { margin-bottom: 18px; }
+/* Obs textarea no card de cobrança */
+.obs-mini {
+  background: rgba(255,107,0,.05);
+  border: 1px solid rgba(255,107,0,.15);
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 11px; color: var(--text2);
+  margin-top: 5px; font-style: italic;
+}
+/* Relatório period tabs */
+.rel-tabs { display: flex; gap: 8px; margin-bottom: 16px; }
+/* Cobrado summary card */
+.cobrado-resumo {
+  background: rgba(255,107,0,.08);
+  border: 1px solid rgba(255,107,0,.2);
+  border-radius: 12px;
+  padding: 14px 16px;
+  margin-bottom: 10px;
+}
+/* Despesas section */
+.desp-filters { display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; align-items: center; }
+
+/* ═══════════════════════════════════════════
+   MEDIA QUERIES
+═══════════════════════════════════════════ */
+@media (max-width: 1200px) {
+  .sgrid { grid-template-columns: repeat(3,1fr); }
+  .rgrid { grid-template-columns: repeat(3,1fr); }
+  .forma-grid { grid-template-columns: repeat(2,1fr); }
+}
+@media (max-width: 900px) {
+  .sgrid { grid-template-columns: repeat(2,1fr); }
+  .rgrid { grid-template-columns: repeat(2,1fr); }
+}
+@media (max-width: 680px) {
+  .sidebar { transform: translateX(-100%); }
+  .sidebar.open { transform: translateX(0); }
+  .mob-bar { display: flex; }
+  .main { margin-left: 0; padding: 14px; padding-top: 66px; }
+  .sgrid { grid-template-columns: 1fr 1fr; }
+  .rgrid { grid-template-columns: 1fr 1fr; }
+  .forma-grid { grid-template-columns: 1fr 1fr; }
+  .fgrid { grid-template-columns: 1fr; }
+  .fg.full { grid-column: 1; }
+  .cep-row { grid-template-columns: 1fr; }
+  .strip-date { display: none; }
+  .cbtns { flex-direction: row; flex-wrap: wrap; }
+  .fact { justify-content: stretch; }
+  .fact .btn { flex: 1; justify-content: center; }
+}
+@media (max-width: 420px) {
+  .sgrid { grid-template-columns: 1fr 1fr; }
+  .rgrid { grid-template-columns: 1fr; }
+  .modal { padding: 16px; }
+  .forma-grid { grid-template-columns: 1fr 1fr; }
+}
+</style>
+</head>
+<body>
+
+<!-- ════════════════════════════════════════════
+     TELA DE LOGIN
+════════════════════════════════════════════ -->
+<div id="login-screen">
+  <div class="login-bg-glow"></div>
+  <div class="login-box">
+    <div class="login-logo">COBRA</div>
+    <div class="login-sub">Gestão de Cobranças · Setor</div>
+    <div class="login-field">
+      <label class="login-label">Usuário</label>
+      <input class="login-input" id="l-user" placeholder="Ex: admin ou cobrador01" autocomplete="off" autocapitalize="none"
+        onkeydown="if(event.key==='Enter'){event.preventDefault();document.getElementById('l-pass').focus();}">
+    </div>
+    <div class="login-field">
+      <label class="login-label">Senha</label>
+      <div style="position:relative;">
+        <input class="login-input" id="l-pass" type="password" placeholder="••••••"
+          onkeydown="if(event.key==='Enter')entrar()"
+          style="padding-right:44px;">
+        <button type="button" id="btn-ver-senha"
+          onclick="(function(){var i=document.getElementById('l-pass');var b=document.getElementById('btn-ver-senha');i.type=i.type==='password'?'text':'password';b.textContent=i.type==='password'?'👁':'🙈';})()"
+          style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:18px;color:var(--text2);padding:4px;">👁</button>
+      </div>
+    </div>
+    <button class="login-btn" onclick="entrar()">ENTRAR →</button>
+    <div class="login-err" id="l-err"></div>
+    <div class="login-config" onclick="openConfig()">⚙️ Configurar planilha Google Sheets</div>
+    <div style="margin-top:12px;text-align:center;font-size:10px;color:var(--text3);letter-spacing:1px;" id="app-version">v1.3 · 24/05/26</div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════
+     CONFIG SHEETS
+════════════════════════════════════════════ -->
+<div id="config-screen">
+  <div class="config-box">
+    <h2>⚙️ CONFIGURAÇÃO DA PLANILHA</h2>
+    <p>Cole abaixo o ID da sua planilha Google Sheets e a URL do Web App (Apps Script).</p>
+    <div class="config-step">
+      <b>ID da planilha</b> — está no link:<br>
+      <code>docs.google.com/spreadsheets/d/<b>ID_AQUI</b>/edit</code>
+    </div>
+    <div class="fg" style="margin-bottom:12px;">
+      <label>ID da Planilha</label>
+      <input id="cfg-id" placeholder="15tc3NJ_N1CLlSNEP3CYo..." style="font-size:12px;font-family:monospace;">
+    </div>
+    <div class="config-step">
+      <b>URL do Web App</b> — obtenha em Extensões → Apps Script → Publicar:<br>
+      <code>https://script.google.com/macros/s/.../exec</code>
+    </div>
+    <div class="fg" style="margin-bottom:16px;">
+      <label>URL do Web App (Apps Script)</label>
+      <input id="cfg-url" placeholder="https://script.google.com/macros/s/.../exec">
+    </div>
+    <div class="fact">
+      <button class="btn bc" onclick="closeConfig()">Cancelar</button>
+      <button class="btn bp" onclick="salvarConfig()">💾 Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════
+     OVERLAY MOBILE
+════════════════════════════════════════════ -->
+<div class="ovl" id="ovl" onclick="closeSB()"></div>
+
+<!-- ════════════════════════════════════════════
+     TOPBAR MOBILE
+════════════════════════════════════════════ -->
+<div class="mob-bar">
+  <button class="hbg" onclick="toggleSB()">☰</button>
+  <span class="mob-title">CobraSetor</span>
+  <span class="nbadge" id="mob-badge" style="display:none;margin-left:auto;"></span>
+  <button class="btn bp bsm" id="mob-novo-cli" onclick="openModal()" style="margin-left:8px;display:none;">+ Cliente</button>
+</div>
+
+<!-- ════════════════════════════════════════════
+     SIDEBAR
+════════════════════════════════════════════ -->
+<aside class="sidebar" id="sidebar">
+  <div class="logo-wrap">
+    <img id="logo-prop-img" class="logo-prop-img" alt="Logo">
+    <div class="logo-name" id="logo-text">CobraSetor</div>
+    <div class="logo-sub" id="logo-sub-text">Gestão de Cobranças</div>
+    <div class="user-badge">
+      <span class="user-role" id="user-role-badge">👤</span>
+      <span class="user-nome-sb" id="user-name-sb"></span>
+    </div>
+  </div>
+
+  <nav class="nav" id="nav-menu">
+    <div class="ni active" id="ni-dashboard"   onclick="goTo('dashboard',this)">
+      <span class="ico">📊</span>Dashboard
+    </div>
+    <div class="ni" id="ni-clientes"    onclick="goTo('clientes',this)">
+      <span class="ico">👥</span>Clientes
+    </div>
+    <div class="ni" id="ni-cobranca"    onclick="goTo('cobranca',this)">
+      <span class="ico">💰</span>Cobrança
+      <span class="nbadge" id="badge-cobr" style="display:none">0</span>
+    </div>
+    <div class="ni" id="ni-despesas"    onclick="goTo('despesas',this)">
+      <span class="ico">📦</span>Despesas
+    </div>
+    <div class="ni" id="ni-relatorio"   onclick="goTo('relatorio',this)">
+      <span class="ico">📈</span>Relatório
+    </div>
+    <div class="ni" id="ni-cobradores"  onclick="goTo('cobradores',this)">
+      <span class="ico">👮</span>Cobradores
+    </div>
+    <div class="ni" id="ni-proprietarios" onclick="goTo('proprietarios',this)">
+      <span class="ico">👔</span>Proprietários
+    </div>
+    <div class="ni-sep"></div>
+    <div class="ni" id="ni-sair" onclick="sair()">
+      <span class="ico">🚪</span>Sair
+    </div>
+  </nav>
+
+  <div class="sfoot">
+    CobraSetor v1.0<br>
+    <span id="clock"></span>
+  </div>
+</aside>
+
+<!-- ════════════════════════════════════════════
+     MAIN APP
+════════════════════════════════════════════ -->
+<main class="main" id="main-app" style="display:none;">
+
+  <!-- Top strip -->
+  <div class="strip">
+    <span style="font-size:16px;">🐍</span>
+    <span class="strip-title" id="strip-title">CobraSetor — Gestão de Cobranças</span>
+    <span class="strip-date" id="dateInfo"></span>
+    <button class="btn bp" id="btn-novo-cli" onclick="openModal()" style="margin-left:auto;display:none;">+ Novo Cliente</button>
+  </div>
+
+  <!-- Sync bar -->
+  <div class="sync-bar">
+    <div class="sync-dot ok" id="sync-dot"></div>
+    <span id="sync-txt">Sincronizado</span>
+    <button class="btn bc bsm" onclick="syncAll()" style="margin-left:auto;">🔄 Sincronizar</button>
+  </div>
+
+  <!-- ── DASHBOARD ── -->
+  <div class="sec active" id="sec-dashboard">
+    <div class="ph">
+      <div class="ptitle">Dashboard <span>Geral</span></div>
+    </div>
+
+    <!-- Stats cards -->
+    <div class="sgrid">
+      <div class="sc c-orange">
+        <div class="slbl">Total Clientes</div>
+        <div class="sval" id="s-tot">0</div>
+        <div class="ssub" id="s-setor-lbl">ativos</div>
+      </div>
+      <div class="sc c-warn">
+        <div class="slbl">Vencem Hoje</div>
+        <div class="sval" id="s-hj">0</div>
+        <div class="ssub">cobrar agora</div>
+      </div>
+      <div class="sc c-red">
+        <div class="slbl">Em Atraso</div>
+        <div class="sval" id="s-atr">0</div>
+        <div class="ssub">pendentes</div>
+      </div>
+      <div class="sc c-info">
+        <div class="slbl">Remarcados</div>
+        <div class="sval" id="s-rem">0</div>
+        <div class="ssub">aguardando</div>
+      </div>
+      <div class="sc c-green" id="sc-recebido">
+        <div class="slbl">Receita Mensal</div>
+        <div class="sval" id="s-men">R$0</div>
+        <div class="ssub">contratos ativos</div>
+      </div>
+    </div>
+
+    <!-- Resumo por setor (prop + admin) -->
+    <div class="tcard resumo-setor-wrap" id="card-resumo-setor">
+      <div class="thead2">
+        <div class="ttitle">📊 RESUMO POR SETOR</div>
+        <input class="sinp" id="srch-setor" placeholder="🔍 Filtrar setor..." oninput="renderResumoSetor()" style="width:150px;">
+      </div>
+      <div class="twrap">
+        <table>
+          <thead><tr>
+            <th>Setor</th><th>Clientes</th><th>Receita/Mês</th>
+            <th>✅ Em Dia</th><th>⚡ Hoje</th><th>🔴 Atrasados</th>
+            <th>💰 A Cobrar</th><th>Ação</th>
+          </tr></thead>
+          <tbody id="tb-setor"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Clientes recentes -->
+    <div class="tcard">
+      <div class="thead2"><div class="ttitle">📋 CLIENTES RECENTES</div></div>
+      <div class="twrap">
+        <table>
+          <thead><tr>
+            <th>ID</th><th>Nome</th><th>Setor</th>
+            <th>Próx. Venc.</th><th>Valor</th><th>Status</th>
+          </tr></thead>
+          <tbody id="tb-dash"></tbody>
+        </table>
+      </div>
+    </div>
+  </div><!-- /dashboard -->
+
+  <!-- ── CLIENTES ── -->
+  <div class="sec" id="sec-clientes">
+    <div class="ph">
+      <div class="ptitle">Clientes <span>Cadastrados</span></div>
+    </div>
+
+    <!-- Filtros -->
+    <div class="tcard" style="margin-bottom:14px;">
+      <div class="thead2" style="flex-wrap:wrap;gap:8px;">
+        <div class="ttitle">👥 CLIENTES</div>
+        <input class="sinp" id="srch" placeholder="🔍 Nome, ID, rua..." oninput="renderCli()" style="width:180px;">
+        <select class="ssel" id="fil-setor" onchange="setFCliSetor(this.value)">
+          <option value="">Todos os setores</option>
+        </select>
+        <select class="ssel" id="fil-status" onchange="setFCliStatus(this.value)">
+          <option value="">Todos os status</option>
+          <option value="hoje">⚡ Vence Hoje</option>
+          <option value="atrasado">🔴 Atrasado</option>
+          <option value="ok">✅ Em Dia</option>
+          <option value="adiantado">⭐ Adiantado</option>
+          <option value="remarcado">🔵 Remarcado</option>
+          <option value="inativo">⚫ Inativo</option>
+        </select>
+        <select class="ssel" id="fil-forma" onchange="setFCliForma(this.value)">
+          <option value="">Todas as formas</option>
+          <option value="dinheiro">💵 Dinheiro</option>
+          <option value="cartao">💳 Cartão</option>
+          <option value="pix_presencial">✅ Pix Presencial</option>
+          <option value="pix_auto">🤖 Pix Automático</option>
+        </select>
+      </div>
+      <div class="twrap">
+        <table>
+          <thead><tr>
+            <th>ID</th><th>Nome</th><th>Endereço</th><th>Setor</th>
+            <th>Telefone</th><th>Vencimento</th><th>Valor</th>
+            <th>PIX</th><th>Status</th><th id="th-acoes">Ações</th>
+          </tr></thead>
+          <tbody id="tb-cli"></tbody>
+        </table>
+      </div>
+    </div>
+  </div><!-- /clientes -->
+
+  <!-- ── COBRANÇA ── -->
+  <div class="sec" id="sec-cobranca">
+    <div class="ph">
+      <div class="ptitle">Cobrança <span>do Dia</span></div>
+    </div>
+
+    <!-- Filtro de setor -->
+    <div class="frow" style="margin-bottom:10px;">
+      <div class="fsetor-wrap" id="wrap-fsetor">
+        <span class="fsetor-lbl">Setor:</span>
+        <select class="fsetor-sel" id="fsetor" onchange="renderCob()">
+          <option value="">Todos</option>
+        </select>
+      </div>
+      <span class="fsetor-badge" id="fsetor-badge" style="display:none;"></span>
+    </div>
+
+    <!-- Tabs Pendentes -->
+    <div class="sep-label">📋 Pendentes</div>
+    <div class="frow" style="margin-bottom:8px;">
+      <div class="ftab active" id="ctab-todos"     onclick="setTab('todos',this)">Todos Pendentes</div>
+      <div class="ftab"        id="ctab-hoje"      onclick="setTab('hoje',this)">⚡ Vence Hoje</div>
+      <div class="ftab"        id="ctab-atrasado"  onclick="setTab('atrasado',this)">🔴 Atrasados</div>
+      <div class="ftab"        id="ctab-remarcado" onclick="setTab('remarcado',this)">🔵 Remarcados</div>
+    </div>
+
+    <!-- Tabs Cobrado -->
+    <div class="sep-label">✅ Cobrado</div>
+    <div class="frow" style="margin-bottom:14px;">
+      <div class="ftab" id="ctab-cobhoje" onclick="setTab('cobhoje',this)">
+        💰 Hoje <span id="badge-cobhoje" style="background:var(--success);color:#000;border-radius:9px;padding:1px 6px;font-size:11px;margin-left:4px;">0</span>
+      </div>
+      <div class="ftab" id="ctab-cobsem"  onclick="setTab('cobsem',this)">
+        📅 Semana <span id="badge-cobsem" style="background:var(--accent);color:#000;border-radius:9px;padding:1px 6px;font-size:11px;margin-left:4px;">0</span>
+      </div>
+      <div class="ftab" id="ctab-cobmes"  onclick="setTab('cobmes',this)">
+        🗓️ Mês <span id="badge-cobmes" style="background:var(--accent2);color:#000;border-radius:9px;padding:1px 6px;font-size:11px;margin-left:4px;">0</span>
+      </div>
+    </div>
+
+    <div class="clist" id="cobr-list"></div>
+  </div><!-- /cobranca -->
+
+  <!-- ── DESPESAS ── -->
+  <div class="sec" id="sec-despesas">
+    <div class="ph">
+      <div class="ptitle">Despesas <span>por Setor</span></div>
+      <button class="btn bp" onclick="openDesp()">+ Nova Despesa</button>
+    </div>
+
+    <div class="desp-filters">
+      <select class="ssel" id="desp-setor" onchange="renderDesp()">
+        <option value="">Todos os setores</option>
+      </select>
+      <select class="ssel" id="desp-mes" onchange="renderDesp()">
+        <option value="">Todos os meses</option>
+      </select>
+    </div>
+
+    <div class="tcard">
+      <div class="thead2">
+        <div class="ttitle">📦 DESPESAS</div>
+        <span id="desp-total-txt" style="font-size:13px;color:var(--danger);font-weight:600;margin-left:auto;"></span>
+      </div>
+      <div class="twrap">
+        <table>
+          <thead><tr>
+            <th>Data</th><th>Nome</th><th>Setor</th><th>Valor</th><th>Obs</th><th>Ações</th>
+          </tr></thead>
+          <tbody id="tb-desp"></tbody>
+        </table>
+      </div>
+    </div>
+  </div><!-- /despesas -->
+
+  <!-- ── RELATÓRIO ── -->
+  <div class="sec" id="sec-relatorio">
+    <div class="ph">
+      <div class="ptitle">Relatório <span>Financeiro</span></div>
+    </div>
+
+    <!-- Period tabs -->
+    <div class="rel-tabs">
+      <div class="ftab active" id="rtab-mes"  onclick="setRelTab('mes',this)">🗓️ Este Mês</div>
+      <div class="ftab"        id="rtab-sem"  onclick="setRelTab('sem',this)">📅 Semana</div>
+      <div class="ftab"        id="rtab-dia"  onclick="setRelTab('dia',this)">📋 Hoje</div>
+    </div>
+
+    <!-- Resumo financeiro -->
+    <div class="rgrid">
+      <div class="rcard c-green">
+        <div class="rper">💰 Recebido</div>
+        <div class="rval" id="r-recebido">R$ 0</div>
+        <div class="rcnt" id="rc-recebido">0 pagamentos</div>
+      </div>
+      <div class="rcard c-red">
+        <div class="rper">📦 Despesas</div>
+        <div class="rval" id="r-despesas">R$ 0</div>
+        <div class="rcnt" id="rc-despesas">0 lançamentos</div>
+      </div>
+      <div class="rcard c-saldo">
+        <div class="rper">⚖️ Saldo</div>
+        <div class="rval" id="r-saldo">R$ 0</div>
+        <div class="rcnt" id="rc-saldo">receitas − despesas</div>
+      </div>
+      <div class="rcard c-orange">
+        <div class="rper">⏳ Em Aberto</div>
+        <div class="rval" id="r-aberto">R$ 0</div>
+        <div class="rcnt" id="rc-aberto">a cobrar</div>
+      </div>
+      <div class="rcard c-warn">
+        <div class="rper">🔴 Inadimplente</div>
+        <div class="rval" id="r-inadimplente">R$ 0</div>
+        <div class="rcnt" id="rc-inadimplente">30+ dias</div>
+      </div>
+    </div>
+
+    <!-- Variação de clientes no mês -->
+    <div class="tcard" style="margin-bottom:16px;">
+      <div class="ttitle" style="padding:12px 16px 0;">📊 VARIAÇÃO DE CLIENTES</div>
+      <div style="display:flex;gap:12px;flex-wrap:wrap;padding:12px 16px 16px;">
+        <div class="rcard c-green" style="flex:1;min-width:130px;">
+          <div class="rper">✅ Novos</div>
+          <div class="rval" id="r-novos" style="font-size:2rem;">0</div>
+          <div class="rcnt" id="rc-novos">neste mês</div>
+        </div>
+        <div class="rcard c-red" style="flex:1;min-width:130px;">
+          <div class="rper">🚪 Desistiram</div>
+          <div class="rval" id="r-desist" style="font-size:2rem;">0</div>
+          <div class="rcnt" id="rc-desist">neste mês</div>
+        </div>
+        <div class="rcard" id="card-saldo-var" style="flex:1;min-width:130px;border-left:3px solid var(--accent);">
+          <div class="rper">⚖️ Saldo</div>
+          <div class="rval" id="r-saldo-var" style="font-size:2rem;">0</div>
+          <div class="rcnt" id="rc-saldo-var">variação líquida</div>
+        </div>
+        <div class="rcard" style="flex:1;min-width:130px;border-left:3px solid var(--text2);">
+          <div class="rper">👥 Total Ativos</div>
+          <div class="rval" id="r-total-ativos" style="font-size:2rem;">0</div>
+          <div class="rcnt" id="rc-total-ativos">clientes ativos</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Por forma de pagamento -->
+    <div class="forma-grid" style="margin-bottom:16px;">
+      <div class="forma-card" style="border-left:3px solid var(--warn);">
+        <div class="forma-lbl">💵 Dinheiro</div>
+        <div class="forma-val" id="r-din" style="color:var(--warn);">R$ 0</div>
+        <div class="forma-cnt" id="rc-din">0 pag.</div>
+      </div>
+      <div class="forma-card" style="border-left:3px solid var(--info);">
+        <div class="forma-lbl">💳 Cartão</div>
+        <div class="forma-val" id="r-cart" style="color:var(--info);">R$ 0</div>
+        <div class="forma-cnt" id="rc-cart">0 pag.</div>
+      </div>
+      <div class="forma-card" style="border-left:3px solid var(--success);">
+        <div class="forma-lbl">✅ Pix Presencial</div>
+        <div class="forma-val" id="r-pixp" style="color:var(--success);">R$ 0</div>
+        <div class="forma-cnt" id="rc-pixp">0 pag.</div>
+      </div>
+      <div class="forma-card" style="border-left:3px solid var(--purple);">
+        <div class="forma-lbl">🤖 Pix Automático</div>
+        <div class="forma-val" id="r-pixa" style="color:var(--purple);">R$ 0</div>
+        <div class="forma-cnt" id="rc-pixa">0 pag.</div>
+      </div>
+    </div>
+
+    <!-- Resultado financeiro por setor -->
+    <div class="tcard" style="margin-bottom:14px;">
+      <div class="thead2"><div class="ttitle">⚖️ RESULTADO POR SETOR</div></div>
+      <div class="twrap">
+        <table>
+          <thead><tr>
+            <th>Setor</th>
+            <th style="color:var(--success);">💰 Cobrado</th>
+            <th style="color:var(--danger);">📦 Despesas</th>
+            <th>⚖️ Saldo</th>
+          </tr></thead>
+          <tbody id="tb-rel-resultado-setor"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Cobrado por setor (detalhe por forma) -->
+    <div class="tcard" style="margin-bottom:14px;">
+      <div class="thead2"><div class="ttitle">💰 COBRADO POR SETOR</div></div>
+      <div class="twrap">
+        <table>
+          <thead><tr>
+            <th>Setor</th><th>Pag.</th><th>Total Recebido</th>
+            <th>💵 Dinheiro</th><th>✅ Pix</th><th>💳 Cartão</th><th>🤖 Pix Auto</th>
+          </tr></thead>
+          <tbody id="tb-rel-cobrado-setor"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Tabela de pagamentos -->
+    <div class="tcard" style="margin-bottom:14px;">
+      <div class="thead2"><div class="ttitle">📋 HISTÓRICO DE PAGAMENTOS</div></div>
+      <div class="twrap">
+        <table>
+          <thead><tr>
+            <th>Data/Hora</th><th>Cliente</th><th>ID</th><th>Setor</th>
+            <th>Valor</th><th>Forma</th><th>Mês Pago</th><th>Cobrador</th>
+          </tr></thead>
+          <tbody id="tb-rel"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Relatório de clientes -->
+    <div class="tcard">
+      <div class="thead2"><div class="ttitle">👥 CLIENTES POR SETOR</div></div>
+      <div class="twrap">
+        <table>
+          <thead><tr>
+            <th>Setor</th><th>Total</th><th>Ativos</th><th>Inadimplentes</th>
+            <th>30+ Dias</th><th>Receita/Mês</th>
+          </tr></thead>
+          <tbody id="tb-rel-setor"></tbody>
+        </table>
+      </div>
+    </div>
+  </div><!-- /relatorio -->
+
+  <!-- ── COBRADORES ── -->
+  <div class="sec" id="sec-cobradores">
+    <div class="ph">
+      <div class="ptitle">Cobradores <span>da Equipe</span></div>
+      <button class="btn bp" onclick="openCobrador()">+ Novo Cobrador</button>
+    </div>
+
+    <div class="tcard">
+      <div class="thead2"><div class="ttitle">👮 COBRADORES CADASTRADOS</div></div>
+      <div class="twrap">
+        <table>
+          <thead><tr>
+            <th>Nome</th><th>Usuário</th><th>Setores</th><th>Status</th><th>Ações</th>
+          </tr></thead>
+          <tbody id="tb-cobradores"></tbody>
+        </table>
+      </div>
+    </div>
+  </div><!-- /cobradores -->
+
+  <!-- ── PROPRIETÁRIOS (admin) ── -->
+  <div class="sec" id="sec-proprietarios">
+    <div class="ph">
+      <div class="ptitle">Proprietários <span>do Sistema</span></div>
+      <button class="btn bp" onclick="openProp()">+ Novo Proprietário</button>
+    </div>
+
+    <div class="tcard">
+      <div class="thead2"><div class="ttitle">👔 PROPRIETÁRIOS CADASTRADOS</div></div>
+      <div class="twrap">
+        <table>
+          <thead><tr>
+            <th>Nome</th><th>Usuário</th><th>Setores</th><th>Cobradores</th>
+            <th>Mensalidade</th><th>Status</th><th>Ações</th>
+          </tr></thead>
+          <tbody id="tb-proprietarios"></tbody>
+        </table>
+      </div>
+    </div>
+  </div><!-- /proprietarios -->
+
+</main><!-- /main-app -->
+
+
+<!-- ════════════════════════════════════════════
+     MODAL — CADASTRO/EDIÇÃO DE CLIENTE
+════════════════════════════════════════════ -->
+<div class="mbg" id="mbg">
+  <div class="modal" style="max-width:620px;">
+    <h2 id="mtitle">✚ NOVO CLIENTE</h2>
+    <div class="fgrid">
+      <div class="fg"><label>Nome *</label><input id="f-nome" placeholder="Nome completo do cliente"></div>
+      <div class="fg"><label>Telefone / WhatsApp</label><input id="f-tel" placeholder="(00) 00000-0000" oninput="mPhone(this)"></div>
+
+      <div class="fg full">
+        <label>CEP — preenche endereço automaticamente</label>
+        <div class="cep-row">
+          <div>
+            <input id="f-cep" placeholder="00000-000" maxlength="9" oninput="mCep(this)">
+            <div class="cep-hint" id="cep-h"></div>
+          </div>
+          <input id="f-rua" placeholder="Logradouro / Rua *" list="dl-ruas" autocomplete="off" oninput="filtrarRuas(this.value)">
+          <datalist id="dl-ruas"></datalist>
+        </div>
+      </div>
+
+      <div class="fg"><label>Número</label><input id="f-num" placeholder="123"></div>
+      <div class="fg"><label>Complemento</label><input id="f-comp" placeholder="Sala, apto..."></div>
+      <div class="fg"><label>Bairro</label><input id="f-bairro" placeholder="Bairro"></div>
+      <div class="fg"><label>Cidade / UF</label><input id="f-cidade" placeholder="Cidade - SP"></div>
+
+      <div class="fg"><label>Setor *</label>
+        <input id="f-setor" placeholder="Ex: Setor 01" list="dl-setores" oninput="onSetorChange()">
+        <datalist id="dl-setores"></datalist>
+      </div>
+      <div class="fg"><label>Ordem na Rota (ordemRua)</label><input id="f-ordem-rua" type="number" min="1" placeholder="Ex: 3"></div>
+
+      <div class="fg"><label>Dia de Vencimento * (1–31)</label><input id="f-venc" type="number" min="1" max="31" placeholder="15"></div>
+      <div class="fg"><label>Próximo Vencimento (mês)</label>
+        <select id="f-proxvenc"></select>
+      </div>
+
+      <div class="fg"><label>Valor Mensal R$ *</label><input id="f-valor" type="number" step="0.01" placeholder="150.00"></div>
+      <div class="fg"><label>Forma de Pagamento Padrão</label>
+        <select id="f-forma-padrao">
+          <option value="dinheiro">💵 Dinheiro</option>
+          <option value="cartao">💳 Cartão</option>
+          <option value="pix_presencial">✅ Pix Presencial</option>
+          <option value="pix_auto">🤖 Pix Automático</option>
+        </select>
+      </div>
+
+      <div class="fg"><label>Aceita PIX?</label>
+        <select id="f-pix">
+          <option value="sim">✅ Sim</option>
+          <option value="nao">❌ Não</option>
+        </select>
+      </div>
+      <div class="fg"><label>Chave PIX</label><input id="f-chave-pix" placeholder="CPF, telefone ou e-mail"></div>
+
+      <div class="fg"><label>Latitude</label><input id="f-lat" type="number" step="any" placeholder="-23.5505"></div>
+      <div class="fg"><label>Longitude</label><input id="f-lng" type="number" step="any" placeholder="-46.6333"></div>
+
+      <div class="fg full"><label>Observações</label><textarea id="f-obs" placeholder="Notas sobre o cliente..."></textarea></div>
+    </div>
+    <div class="fact">
+      <button class="btn bc" onclick="closeModal()">Cancelar</button>
+      <button class="btn bp" onclick="salvar()">💾 Salvar Cliente</button>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════
+     MODAL — PAGAMENTO
+════════════════════════════════════════════ -->
+<div class="mbg" id="pbg">
+  <div class="modal" style="max-width:460px;">
+    <h2>✅ REGISTRAR PAGAMENTO</h2>
+    <div class="modal-info" id="p-info"></div>
+
+    <div style="margin-bottom:14px;">
+      <label>MÊS DO PAGAMENTO</label>
+      <div style="font-size:12px;color:var(--text2);margin:5px 0 8px;">Pago adiantado? Selecione o mês correto:</div>
+      <div class="popts" id="p-mes"></div>
+    </div>
+
+    <div style="margin-bottom:12px;">
+      <label>FORMA DE PAGAMENTO</label>
+      <div class="popts" id="p-forma-btns" style="margin-top:8px;">
+        <button class="pbtn" id="btn-pf-din"  onclick="setForma('dinheiro')">💵 Dinheiro</button>
+        <button class="pbtn" id="btn-pf-cart" onclick="setForma('cartao')">💳 Cartão</button>
+        <button class="pbtn" id="btn-pf-pixp" onclick="setForma('pix_presencial')">✅ Pix Presencial</button>
+        <button class="pbtn" id="btn-pf-pixa" onclick="setForma('pix_auto')">🤖 Pix Auto</button>
+      </div>
+    </div>
+
+    <div class="fg" style="margin-bottom:0;">
+      <label>Observação (opcional)</label>
+      <input id="p-obs" placeholder="Ex: cliente pagou com troco...">
+    </div>
+
+    <!-- Desfazer -->
+    <div class="desfazer-section" id="p-desfazer">
+      <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">↩️ Desfazer pagamento anterior</div>
+      <div style="font-size:12px;color:var(--text2);margin-bottom:8px;">Registrou errado? Volte o vencimento para:</div>
+      <div class="popts" id="p-voltar"></div>
+      <button class="btn bw" style="width:100%;margin-top:10px;justify-content:center;" onclick="desfazerPag()">↩️ Voltar vencimento</button>
+    </div>
+
+    <div class="fact">
+      <button class="btn bc" onclick="closePag()">Cancelar</button>
+      <button class="btn bs" id="btn-confirmar-pag" onclick="confirmarPag()">✅ Confirmar Pagamento</button>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════
+     MODAL — REMARCAR
+════════════════════════════════════════════ -->
+<div class="mbg" id="rbg">
+  <div class="modal" style="max-width:420px;">
+    <h2>🔄 REMARCAR CLIENTE</h2>
+    <div class="modal-info" id="r-info"></div>
+    <div class="fg" style="margin-bottom:14px;">
+      <label>Data de Retorno *</label>
+      <input id="r-data" type="date">
+    </div>
+    <div class="fg" style="margin-bottom:0;">
+      <label>Observação</label>
+      <input id="r-obs" placeholder="Ex: não estava em casa...">
+    </div>
+    <div class="fact">
+      <button class="btn bc" onclick="closeRemarcar()">Cancelar</button>
+      <button class="btn bi" onclick="confirmarRemarcar()">🔄 Confirmar Remarcação</button>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════
+     MODAL — OBSERVAÇÃO
+════════════════════════════════════════════ -->
+<div class="mbg" id="obg">
+  <div class="modal" style="max-width:420px;">
+    <h2>✏️ ADICIONAR OBSERVAÇÃO</h2>
+    <div class="modal-info" id="ob-info"></div>
+    <div class="fg" style="margin-bottom:0;">
+      <label>Observação</label>
+      <textarea id="ob-texto" placeholder="Descreva o que aconteceu na visita..." style="height:80px;"></textarea>
+    </div>
+    <div class="fact">
+      <button class="btn bc" onclick="closeObs()">Cancelar</button>
+      <button class="btn bw" onclick="salvarObs()">💾 Salvar Observação</button>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════
+     MODAL — DESPESA
+════════════════════════════════════════════ -->
+<div class="mbg" id="desbg">
+  <div class="modal" style="max-width:460px;">
+    <h2 id="de-title">📦 NOVA DESPESA</h2>
+    <div class="fgrid">
+      <div class="fg full">
+        <label>Nome da Despesa *</label>
+        <input id="de-nome" placeholder="Ex: Combustível" list="dl-desp-sugestoes" autocomplete="off"
+          onkeydown="if(event.key==='Enter'){event.preventDefault();document.getElementById('de-valor').focus();}">
+        <datalist id="dl-desp-sugestoes">
+          <option value="Combustível">
+          <option value="Pagamento de cobrador">
+          <option value="Manutenção">
+          <option value="Material">
+          <option value="Internet">
+          <option value="Energia">
+          <option value="Aluguel">
+          <option value="Outros">
+        </datalist>
+      </div>
+      <div class="fg"><label>Valor R$ *</label><input id="de-valor" type="number" step="0.01" placeholder="0.00"
+        onkeydown="if(event.key==='Enter'){event.preventDefault();document.getElementById('de-data').focus();}"></div>
+      <div class="fg"><label>Data *</label><input id="de-data" type="date"
+        onkeydown="if(event.key==='Enter'){event.preventDefault();document.getElementById('de-setor').focus();}"></div>
+      <div class="fg full"><label>Setor *</label>
+        <select id="de-setor"
+          onkeydown="if(event.key==='Enter'){event.preventDefault();document.getElementById('de-obs').focus();}">
+          <option value="">Selecione o setor...</option>
+        </select>
+      </div>
+      <div class="fg full"><label>Observação</label><textarea id="de-obs" placeholder="Detalhes..."
+        onkeydown="if(event.key==='Enter'&&(event.ctrlKey||event.metaKey)){event.preventDefault();salvarDesp();}"></textarea></div>
+    </div>
+    <div class="fact">
+      <button class="btn bc" onclick="closeDesp()">Cancelar</button>
+      <button class="btn bp" onclick="salvarDesp()">💾 Salvar Despesa</button>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════
+     MODAL — COBRADOR
+════════════════════════════════════════════ -->
+<div class="mbg" id="cobrbg">
+  <div class="modal" style="max-width:440px;">
+    <h2 id="cobr-title">👮 NOVO COBRADOR</h2>
+    <div class="fgrid">
+      <div class="fg full"><label>Nome *</label><input id="cv-nome" placeholder="Nome do cobrador"></div>
+      <div class="fg"><label>Usuário (login) *</label><input id="cv-usuario" placeholder="Ex: cobrador01" autocapitalize="none"></div>
+      <div class="fg"><label>Senha * (mín. 6 caracteres)</label><input id="cv-senha" placeholder="••••••"></div>
+      <div class="fg full">
+        <label>Setores Autorizados *</label>
+        <div class="setores-check" id="cv-setores-wrap">
+          <div style="color:var(--text3);font-size:12px;">Carregando setores...</div>
+        </div>
+      </div>
+    </div>
+    <div class="fact">
+      <button class="btn bc" onclick="closeCobrador()">Cancelar</button>
+      <button class="btn bp" onclick="salvarCobrador()">💾 Salvar Cobrador</button>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════
+     MODAL — PROPRIETÁRIO
+════════════════════════════════════════════ -->
+<div class="mbg" id="propbg">
+  <div class="modal" style="max-width:520px;">
+    <h2 id="prop-title">👔 NOVO PROPRIETÁRIO</h2>
+    <div class="fgrid">
+      <div class="fg"><label>Nome *</label><input id="pr-nome" placeholder="Nome completo"></div>
+      <div class="fg"><label>Usuário (login) *</label><input id="pr-usuario" placeholder="Ex: joao" autocapitalize="none"></div>
+      <div class="fg"><label>Senha * (mín. 6 caracteres)</label><input id="pr-senha" placeholder="••••••"></div>
+      <div class="fg"><label>WhatsApp</label><input id="pr-tel" placeholder="(00) 00000-0000" oninput="mPhone(this)"></div>
+      <div class="fg"><label>Chave PIX</label><input id="pr-pix" placeholder="CPF, telefone ou e-mail"></div>
+      <div class="fg"><label>Valor Assinatura R$ (por setor)</label><input id="pr-valor" type="number" step="0.01" placeholder="50.00"></div>
+      <div class="fg full"><label>Setores (separados por vírgula) *</label><input id="pr-setores" placeholder="Ex: Setor 13, Setor 02, Setor 05"></div>
+      <div class="fg full"><label>URL da Logo (Google Drive, Imgur...)</label><input id="pr-logo" placeholder="https://i.imgur.com/...png"></div>
+    </div>
+    <div class="fact">
+      <button class="btn bc" onclick="closeProp()">Cancelar</button>
+      <button class="btn bp" onclick="salvarProp()">💾 Salvar Proprietário</button>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════
+     TOAST
+════════════════════════════════════════════ -->
+<div class="toast" id="toast"><span id="tmsg"></span></div>
+
+
+<!-- ════════════════════════════════════════════
+     SCRIPTS (carregados em ordem)
+════════════════════════════════════════════ -->
+<script src="js/config.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/clientes.js"></script>
+<script src="js/cobrancas.js"></script>
+<script src="js/relatorios.js"></script>
+
+</body>
+</html>

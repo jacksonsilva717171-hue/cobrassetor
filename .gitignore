@@ -1,0 +1,19 @@
+# Arquivos de sistema
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Arquivos temporários
+*.tmp
+*.log
+
+# Configurações locais do editor
+.vscode/
+.idea/
+
+# Arquivo de configuração local do Claude Code (não subir)
+.claude/
+
+# Arquivos antigos / backup
+eps-sheets-1 (2).html
+CobraSetor_PRD_ClaudeCode.md
