@@ -286,12 +286,16 @@ function getClisFiltrados() {
   if (!USER) return [];
   if (USER.role === 'admin') return CLI;
   if (USER.role === 'proprietario') {
-    return CLI.filter(c => (USER.setores || []).includes(c.setor));
+    // Comparação case-insensitive + trim para tolerar variações de digitação
+    // ex: "Setor 03" === "setor 03" === "Setor 03 " (espaço extra)
+    const setoresNorm = (USER.setores || []).map(s => s.trim().toLowerCase());
+    return CLI.filter(c => setoresNorm.includes((c.setor || '').trim().toLowerCase()));
   }
   if (USER.role === 'cobrador') {
     const meus = Array.isArray(USER.setores) ? USER.setores
                  : (USER.setor ? [USER.setor] : []);
-    return CLI.filter(c => meus.includes(c.setor));
+    const meusNorm = meus.map(s => s.trim().toLowerCase());
+    return CLI.filter(c => meusNorm.includes((c.setor || '').trim().toLowerCase()));
   }
   return [];
 }
@@ -453,20 +457,68 @@ function offlinePost(acao, dados) {
 // ─────────────────────────────────────────────
 // SYNC PRINCIPAL
 // ─────────────────────────────────────────────
+
+/**
+ * Extrai array de uma resposta do Apps Script.
+ * Aceita múltiplos formatos: {ok,data}, {status,clientes}, array direto, etc.
+ */
+function extArr(r, ...keys) {
+  if (Array.isArray(r)) return r;
+  for (const k of keys) if (Array.isArray(r?.[k])) return r[k];
+  return null;
+}
+
 async function syncAll() {
   if (bloqSync) { toast('⏳ Aguarde, sincronização bloqueada por 15s após pagamento.'); return; }
   if (!USER) return;
 
   setSyncStatus('sync', 'Carregando dados...');
 
-  // cobrador busca apenas seu(s) setor(es)
-  const cliParams = {};
+  // ── Determina qual(is) setor(es) buscar ─────────────────────────────────
+  // O Apps Script lê abas separadas por setor (ex: aba "Setor 03").
+  // Cobrador e Proprietário precisam passar o setor para que o script saiba
+  // qual aba ler. Proprietário com múltiplos setores faz uma requisição por
+  // setor e os resultados são combinados.
+  let cliReqPromise;
+
   if (USER.role === 'cobrador') {
     const meus = Array.isArray(USER.setores) ? USER.setores : [USER.setor].filter(Boolean);
-    if (meus.length === 1) cliParams.setor = meus[0];
+    if (meus.length === 1) {
+      cliReqPromise = sheetReq('getClientes', { setor: meus[0] });
+    } else {
+      // cobrador com múltiplos setores: busca sem filtro (admin-like) ou combina
+      cliReqPromise = sheetReq('getClientes', {});
+    }
+
+  } else if (USER.role === 'proprietario') {
+    const meus = Array.isArray(USER.setores) ? USER.setores : [];
+    if (meus.length === 1) {
+      // ✅ FIX: proprietário passa setor igual ao cobrador — sem isso, o Apps
+      // Script não sabia qual aba ler e retornava vazio (bug reportado Vinicius)
+      cliReqPromise = sheetReq('getClientes', { setor: meus[0] });
+    } else if (meus.length > 1) {
+      // Múltiplos setores: busca paralela + merge
+      cliReqPromise = Promise.all(meus.map(s => sheetReq('getClientes', { setor: s })))
+        .then(results => {
+          const combined = results.flatMap(r => extArr(r, 'data', 'clientes', 'rows', 'result') || []);
+          // remove duplicatas por id (caso algum setor apareça em mais de uma aba)
+          const seen = new Set();
+          const deduped = combined.filter(c => {
+            if (!c.id || seen.has(c.id)) return false;
+            seen.add(c.id); return true;
+          });
+          return { ok: true, data: deduped };
+        });
+    } else {
+      cliReqPromise = sheetReq('getClientes', {});
+    }
+
+  } else {
+    // admin: busca todos sem filtro de setor
+    cliReqPromise = sheetReq('getClientes', {});
   }
 
-  const promises = [sheetReq('getClientes', cliParams)];
+  const promises = [cliReqPromise];
   if (USER.role !== 'cobrador') {
     promises.push(sheetReq('getPagamentos'));
     promises.push(sheetReq('getDespesas'));
@@ -477,17 +529,9 @@ async function syncAll() {
 
   const [rCli, rPag, rDesp] = await Promise.all(promises);
 
-  // ── Aceita múltiplos formatos de resposta do Apps Script ──────────────────
-  // {ok:true, data:[...]}, {status:'ok', clientes:[...]}, array direto, etc.
-  function _ext(r, ...keys) {
-    if (Array.isArray(r)) return r;
-    for (const k of keys) if (Array.isArray(r?.[k])) return r[k];
-    return null;
-  }
-
-  const cliData  = _ext(rCli,  'data', 'clientes', 'rows', 'result');
-  const pagData  = _ext(rPag,  'data', 'pagamentos', 'rows', 'result');
-  const despData = _ext(rDesp, 'data', 'despesas', 'rows', 'result');
+  const cliData  = extArr(rCli,  'data', 'clientes', 'rows', 'result');
+  const pagData  = extArr(rPag,  'data', 'pagamentos', 'rows', 'result');
+  const despData = extArr(rDesp, 'data', 'despesas', 'rows', 'result');
 
   if (cliData !== null && cliData.length > 0) {
     CLI = cliData.map(c => normalizarCliente(c));
