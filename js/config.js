@@ -41,6 +41,18 @@ const USUARIOS_PADRAO = [
     valorMensal: 100,
     bloqueado:  false,
   },
+  {
+    usuario:    'elite2022',
+    senha:      'elite2022',
+    role:       'proprietario',
+    nome:       'Vinicius',
+    tel:        '',
+    chavePix:   '',
+    logoUrl:    '',
+    setores:    ['Setor 03', 'Setor 04', 'Setor 05', 'Setor 06', 'Setor 07', 'Setor 08'],
+    valorMensal: 300,
+    bloqueado:  false,
+  },
 ];
 
 // Mescla padrão + extras salvos no localStorage
