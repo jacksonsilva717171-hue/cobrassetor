@@ -1,5 +1,5 @@
-// CobraSetor — Service Worker v5
-const CACHE = 'cobrassetor-v5';
+// CobraSetor — Service Worker v6
+const CACHE = 'cobrassetor-v6';
 const ASSETS = [
   './index.html',
   './js/config.js',
@@ -7,7 +7,8 @@ const ASSETS = [
   './js/clientes.js',
   './js/cobrancas.js',
   './js/relatorios.js',
-  'https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Exo+2:wght@300;400;500;600&display=swap'
+  './js/recibo.js',
+  'https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Exo+2:wght@300;400;500;600&family=Oswald:wght@400;600;700&family=Source+Sans+3:wght@400;600&display=swap'
 ];
 
 self.addEventListener('install', e => {

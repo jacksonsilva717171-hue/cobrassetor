@@ -15,7 +15,7 @@
 <link rel="apple-touch-icon" href="icon-192.png">
 
 <!-- Fonts -->
-<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Exo+2:wght@300;400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Exo+2:wght@300;400;500;600&family=Oswald:wght@400;600;700&family=Source+Sans+3:wght@400;600&display=swap" rel="stylesheet">
 
 <style>
 /* ═══════════════════════════════════════════
@@ -891,30 +891,35 @@ textarea { resize: vertical; min-height: 60px; }
 /* ═══════════════════════════════════════════
    RECIBO DE PAGAMENTO
 ═══════════════════════════════════════════ */
-.recibo-prev {
-  background: #fafafa;
-  color: #1a1a1a;
-  border-radius: 10px;
-  padding: 20px;
-  font-size: 12px;
-  line-height: 1.7;
-  margin-bottom: 16px;
-  border: 1px solid #ddd;
-  max-height: 62vh;
-  overflow-y: auto;
-}
-.rec-empresa { text-align:center; border-bottom:2px solid #222; padding-bottom:12px; margin-bottom:12px; }
-.rec-empresa-nome { font-size:18px; font-weight:700; letter-spacing:1px; text-transform:uppercase; }
-.rec-empresa-sub  { font-size:9px; color:#888; letter-spacing:3px; text-transform:uppercase; margin-top:3px; }
-.rec-titulo { text-align:center; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:3px; margin-bottom:12px; color:#444; border-bottom:1px dashed #ccc; padding-bottom:8px; }
-.rec-row    { display:flex; justify-content:space-between; padding:3px 0; border-bottom:1px solid #f0f0f0; }
-.rec-key    { color:#888; }
-.rec-val    { font-weight:600; text-align:right; max-width:60%; word-break:break-word; }
-.rec-valor  { display:flex; justify-content:space-between; align-items:center; background:#f0f0f0; border-radius:8px; padding:10px 14px; margin:12px 0; }
-.rec-valor-lbl { font-size:11px; color:#666; text-transform:uppercase; letter-spacing:.5px; }
-.rec-valor-num { font-size:18px; font-weight:700; }
-.rec-footer { margin-top:14px; border-top:1px dashed #ccc; padding-top:10px; display:flex; justify-content:space-between; font-size:10px; color:#aaa; }
-.rec-assin  { margin-top:18px; padding-top:8px; border-top:1px solid #ccc; text-align:center; font-size:10px; color:#888; }
+.recibo-prev { background:#fafaf7; border-radius:6px; overflow:hidden; margin-bottom:16px; border:1px solid #ddd; max-height:65vh; overflow-y:auto; }
+.header-eps { background:#111827; padding:18px 20px; display:flex; align-items:center; gap:14px; border-bottom:4px solid #f0c040; }
+.header-eps img, .header-elite img { width:68px; height:68px; object-fit:contain; border-radius:4px; flex-shrink:0; }
+.header-eps .rec-info { color:#fff; }
+.header-eps .rec-empresa { font-family:'Oswald','Rajdhani',sans-serif; font-size:20px; font-weight:700; color:#f0c040; letter-spacing:1px; }
+.header-eps .rec-sub { font-size:11px; color:#aaa; margin-top:2px; }
+.header-eps .rec-tel { font-size:12px; color:#ccc; margin-top:5px; }
+.header-elite { background:#0d0d0d; padding:18px 20px; display:flex; align-items:center; gap:14px; border-bottom:4px solid #c0392b; }
+.header-elite .rec-info { color:#fff; }
+.header-elite .rec-empresa { font-family:'Oswald','Rajdhani',sans-serif; font-size:20px; font-weight:700; color:#fff; letter-spacing:1px; }
+.header-elite .rec-empresa span { color:#c0392b; }
+.header-elite .rec-sub { font-size:11px; color:#aaa; margin-top:2px; }
+.header-elite .rec-tel { font-size:12px; color:#ccc; margin-top:5px; }
+.header-elite .rec-cnpj { font-size:10px; color:#777; margin-top:2px; }
+.rec-titulo { text-align:center; padding:12px 16px; border-bottom:1px dashed #ddd; background:#fafaf7; }
+.rec-titulo h2 { font-family:'Oswald','Rajdhani',sans-serif; font-size:16px; font-weight:600; letter-spacing:3px; color:#1c1c1c; text-transform:uppercase; margin:0; }
+.rec-num { font-size:11px; color:#888; margin-top:2px; }
+.rec-corpo { padding:14px 20px; background:#fafaf7; }
+.rec-campo { display:flex; justify-content:space-between; align-items:flex-start; padding:8px 0; border-bottom:1px solid #f0f0f0; gap:12px; }
+.rec-campo:last-child { border-bottom:none; }
+.rec-lbl { font-size:10px; text-transform:uppercase; letter-spacing:.5px; color:#888; font-weight:600; white-space:nowrap; padding-top:2px; font-family:'Source Sans 3','Exo 2',sans-serif; }
+.rec-val { font-size:14px; font-weight:600; color:#1c1c1c; text-align:right; font-family:'Source Sans 3','Exo 2',sans-serif; }
+.rec-valor-destaque { display:flex; justify-content:space-between; align-items:center; background:#f0f0f0; border-radius:6px; padding:10px 14px; margin:12px 0; }
+.rec-valor-destaque .rec-lbl { font-size:11px; color:#666; }
+.rec-valor-destaque .rec-val { font-family:'Oswald','Rajdhani',sans-serif; font-size:26px; font-weight:700; color:#1a6b35; }
+.rec-rodape { background:#f5f5f2; padding:12px 20px; border-top:1px dashed #ddd; text-align:center; }
+.rec-rodape p { font-size:10px; color:#888; line-height:1.5; margin:0 0 4px; }
+.rec-stamp { display:inline-block; border:3px solid #1a6b35; color:#1a6b35; font-family:'Oswald','Rajdhani',sans-serif; font-size:12px; font-weight:700; letter-spacing:3px; padding:3px 10px; border-radius:4px; transform:rotate(-2deg); opacity:.85; margin-bottom:8px; }
+.rec-assin { margin-top:16px; padding-top:6px; border-top:1px solid #ccc; font-size:10px; color:#999; }
 
 /* ═══════════════════════════════════════════
    MEDIA QUERIES
@@ -1754,6 +1759,7 @@ textarea { resize: vertical; min-height: 60px; }
 <script src="js/clientes.js"></script>
 <script src="js/cobrancas.js"></script>
 <script src="js/relatorios.js"></script>
+<script src="js/recibo.js"></script>
 
 </body>
 </html>
