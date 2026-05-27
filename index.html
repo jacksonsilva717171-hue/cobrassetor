@@ -889,6 +889,34 @@ textarea { resize: vertical; min-height: 60px; }
 .desp-filters { display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; align-items: center; }
 
 /* ═══════════════════════════════════════════
+   RECIBO DE PAGAMENTO
+═══════════════════════════════════════════ */
+.recibo-prev {
+  background: #fafafa;
+  color: #1a1a1a;
+  border-radius: 10px;
+  padding: 20px;
+  font-size: 12px;
+  line-height: 1.7;
+  margin-bottom: 16px;
+  border: 1px solid #ddd;
+  max-height: 62vh;
+  overflow-y: auto;
+}
+.rec-empresa { text-align:center; border-bottom:2px solid #222; padding-bottom:12px; margin-bottom:12px; }
+.rec-empresa-nome { font-size:18px; font-weight:700; letter-spacing:1px; text-transform:uppercase; }
+.rec-empresa-sub  { font-size:9px; color:#888; letter-spacing:3px; text-transform:uppercase; margin-top:3px; }
+.rec-titulo { text-align:center; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:3px; margin-bottom:12px; color:#444; border-bottom:1px dashed #ccc; padding-bottom:8px; }
+.rec-row    { display:flex; justify-content:space-between; padding:3px 0; border-bottom:1px solid #f0f0f0; }
+.rec-key    { color:#888; }
+.rec-val    { font-weight:600; text-align:right; max-width:60%; word-break:break-word; }
+.rec-valor  { display:flex; justify-content:space-between; align-items:center; background:#f0f0f0; border-radius:8px; padding:10px 14px; margin:12px 0; }
+.rec-valor-lbl { font-size:11px; color:#666; text-transform:uppercase; letter-spacing:.5px; }
+.rec-valor-num { font-size:18px; font-weight:700; }
+.rec-footer { margin-top:14px; border-top:1px dashed #ccc; padding-top:10px; display:flex; justify-content:space-between; font-size:10px; color:#aaa; }
+.rec-assin  { margin-top:18px; padding-top:8px; border-top:1px solid #ccc; text-align:center; font-size:10px; color:#888; }
+
+/* ═══════════════════════════════════════════
    MEDIA QUERIES
 ═══════════════════════════════════════════ */
 @media (max-width: 1200px) {
@@ -1691,6 +1719,23 @@ textarea { resize: vertical; min-height: 60px; }
     <div class="fact">
       <button class="btn bc" onclick="closeProp()">Cancelar</button>
       <button class="btn bp" onclick="salvarProp()">💾 Salvar Proprietário</button>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════
+     MODAL — RECIBO DE PAGAMENTO
+════════════════════════════════════════════ -->
+<div class="mbg" id="recibobg">
+  <div class="modal" style="max-width:460px;">
+    <h2>🧾 RECIBO DE PAGAMENTO</h2>
+
+    <div class="recibo-prev" id="recibo-preview"></div>
+
+    <div class="fact">
+      <button class="btn bc" onclick="closeRecibo()">✕ Fechar</button>
+      <button class="btn bi" id="btn-recibo-zap" onclick="enviarWhatsAppRecibo()">📱 WhatsApp</button>
+      <button class="btn bp" id="btn-recibo-pdf" onclick="gerarReciboPDF()">📄 PDF</button>
     </div>
   </div>
 </div>
