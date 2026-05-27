@@ -167,7 +167,7 @@ async function gerarReciboPDF() {
     }
 
     const wrap = document.createElement('div');
-    wrap.style.cssText = 'width:480px;background:#fafaf7;overflow:hidden;font-family:Arial,sans-serif;position:fixed;left:-9999px;top:0;';
+    wrap.style.cssText = 'width:480px;background:#fafaf7;font-family:Arial,sans-serif;position:absolute;left:0;top:0;z-index:-9999;opacity:0;pointer-events:none;';
     wrap.innerHTML = _buildReciboHTML(c, pag);
     document.body.appendChild(wrap);
 
@@ -177,7 +177,7 @@ async function gerarReciboPDF() {
       margin: 0,
       filename: 'recibo-' + c.id + '-' + mesRef + '.pdf',
       image: { type: 'jpeg', quality: 0.95 },
-      html2canvas: { scale: 2, useCORS: true, backgroundColor: '#fafaf7' },
+      html2canvas: { scale: 2, useCORS: true, allowTaint: true, backgroundColor: '#fafaf7', scrollX: 0, scrollY: 0 },
       jsPDF: { unit: 'mm', format: 'a5', orientation: 'portrait' }
     }).from(wrap).save();
 

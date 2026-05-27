@@ -547,9 +547,13 @@ async function syncAll() {
 
   if (cliData !== null && cliData.length > 0) {
     // Merge: nunca retroagir proxVenc local — se local está à frente do Sheets,
-    // mantém o valor local (pagamento confirmado mas ainda não gravado no Sheets)
+    // mantém o valor local (pagamento confirmado mas ainda não gravado no Sheets).
+    // Usa localStorage (não CLI em memória) para sobreviver a refresh de página.
+    const cachedForMerge = JSON.parse(localStorage.getItem('eps_cli') || '[]');
     const localById = {};
-    CLI.forEach(c => { if (c.id) localById[c.id] = c; });
+    // Prioridade: CLI em memória (mais atualizado) > cache localStorage
+    cachedForMerge.forEach(c => { if (c.id) localById[c.id] = c; });
+    CLI.forEach(c => { if (c.id) localById[c.id] = c; }); // sobrescreve com in-memory se existir
 
     CLI = cliData.map(c => {
       const norm = normalizarCliente(c);
