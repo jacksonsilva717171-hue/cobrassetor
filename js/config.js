@@ -598,7 +598,12 @@ function normalizarCliente(c) {
     id:       String(c.id    || ''),
     nome:     String(c.nome  || '').trim(),
     rua:      String(c.rua   || '').trim(),
-    setor:    String(c.setor || '').trim(),
+    setor:    (() => {
+      if (c.setor) return String(c.setor).trim();
+      // cabeçalho da coluna pode ter sido renomeado na planilha (ex: "Setor 02" em vez de "setor")
+      const k = Object.keys(c).find(k => /^[Ss]etor\s*\d+/i.test(k));
+      return k ? String(c[k] || '').trim() : '';
+    })(),
     bairro:   String(c.bairro || ''),
     cidade:   String(c.cidade || ''),
     obs:         c.obs != null ? String(c.obs) : '',
