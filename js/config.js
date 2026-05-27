@@ -486,47 +486,31 @@ async function syncAll() {
 
   setSyncStatus('sync', 'Carregando dados...');
 
-  // ── Determina qual(is) setor(es) buscar ─────────────────────────────────
-  // O Apps Script lê abas separadas por setor (ex: aba "Setor 03").
-  // Cobrador e Proprietário precisam passar o setor para que o script saiba
-  // qual aba ler. Proprietário com múltiplos setores faz uma requisição por
-  // setor e os resultados são combinados.
-  let cliReqPromise;
+  // ── Monta map local (localStorage + memória) para merge de proxVenc ──────
+  const cachedForMerge = JSON.parse(localStorage.getItem('eps_cli') || '[]');
+  const localById = {};
+  cachedForMerge.forEach(c => { if (c.id) localById[c.id] = c; });
+  CLI.forEach(c => { if (c.id) localById[c.id] = c; });
 
+  function applyMerge(arr) {
+    return arr.map(c => {
+      const norm = normalizarCliente(c);
+      const local = localById[norm.id];
+      if (local && local.proxVenc > norm.proxVenc) norm.proxVenc = local.proxVenc;
+      return norm;
+    });
+  }
+
+  // ── Determina promise de clientes ────────────────────────────────────────
+  let cliReqPromise;
   if (USER.role === 'cobrador') {
     const meus = Array.isArray(USER.setores) ? USER.setores : [USER.setor].filter(Boolean);
-    if (meus.length === 1) {
-      cliReqPromise = sheetReq('getClientes', { setor: meus[0] });
-    } else {
-      // cobrador com múltiplos setores: busca sem filtro (admin-like) ou combina
-      cliReqPromise = sheetReq('getClientes', {});
-    }
-
-  } else if (USER.role === 'proprietario') {
-    const meus = Array.isArray(USER.setores) ? USER.setores : [];
-    if (meus.length === 1) {
-      // ✅ FIX: proprietário passa setor igual ao cobrador — sem isso, o Apps
-      // Script não sabia qual aba ler e retornava vazio (bug reportado Vinicius)
-      cliReqPromise = sheetReq('getClientes', { setor: meus[0] });
-    } else if (meus.length > 1) {
-      // Múltiplos setores: busca paralela + merge
-      cliReqPromise = Promise.all(meus.map(s => sheetReq('getClientes', { setor: s })))
-        .then(results => {
-          const combined = results.flatMap(r => extArr(r, 'data', 'clientes', 'rows', 'result') || []);
-          // remove duplicatas por id (caso algum setor apareça em mais de uma aba)
-          const seen = new Set();
-          const deduped = combined.filter(c => {
-            if (!c.id || seen.has(c.id)) return false;
-            seen.add(c.id); return true;
-          });
-          return { ok: true, data: deduped };
-        });
-    } else {
-      cliReqPromise = sheetReq('getClientes', {});
-    }
-
+    cliReqPromise = meus.length === 1
+      ? sheetReq('getClientes', { setor: meus[0] })
+      : sheetReq('getClientes', {});
   } else {
-    // admin: busca todos sem filtro de setor
+    // Tenta busca geral (rápida, sem setor) — funciona quando o Apps Script
+    // retorna todos os clientes de todas as abas num único call.
     cliReqPromise = sheetReq('getClientes', {});
   }
 
@@ -546,26 +530,34 @@ async function syncAll() {
   const despData = extArr(rDesp, 'data', 'despesas', 'rows', 'result');
 
   if (cliData !== null && cliData.length > 0) {
-    // Merge: nunca retroagir proxVenc local — se local está à frente do Sheets,
-    // mantém o valor local (pagamento confirmado mas ainda não gravado no Sheets).
-    // Usa localStorage (não CLI em memória) para sobreviver a refresh de página.
-    const cachedForMerge = JSON.parse(localStorage.getItem('eps_cli') || '[]');
-    const localById = {};
-    // Prioridade: CLI em memória (mais atualizado) > cache localStorage
-    cachedForMerge.forEach(c => { if (c.id) localById[c.id] = c; });
-    CLI.forEach(c => { if (c.id) localById[c.id] = c; }); // sobrescreve com in-memory se existir
+    CLI = applyMerge(cliData);
+    localStorage.setItem('eps_cli', JSON.stringify(CLI));
 
-    CLI = cliData.map(c => {
-      const norm = normalizarCliente(c);
-      const local = localById[norm.id];
-      if (local && local.proxVenc > norm.proxVenc) {
-        norm.proxVenc = local.proxVenc; // mantém o pagamento local mais recente
+    // ── Fallback por setor: se a busca geral não trouxe clientes dos nossos setores
+    // (ex: Apps Script retorna só setores 03-08 na chamada sem parâmetro),
+    // busca cada setor sequencialmente para não saturar a cota.
+    if (USER.role === 'proprietario' && getClisFiltrados().length === 0) {
+      const meus = USER.setores || [];
+      if (meus.length > 0) {
+        const allCli = [];
+        for (const s of meus) {
+          const r = await sheetReq('getClientes', { setor: s });
+          const arr = extArr(r, 'data', 'clientes', 'rows', 'result');
+          if (arr) allCli.push(...arr);
+        }
+        if (allCli.length > 0) {
+          const seen = new Set();
+          const deduped = allCli.filter(c => {
+            if (!c.id || seen.has(c.id)) return false;
+            seen.add(c.id); return true;
+          });
+          CLI = applyMerge(deduped);
+          localStorage.setItem('eps_cli', JSON.stringify(CLI));
+        }
       }
-      return norm;
-    });
-    localStorage.setItem('eps_cli', JSON.stringify(CLI));   // atualiza cache local
+    }
+
   } else if (CLI.length === 0) {
-    // resposta veio vazia ou formato inválido → usa cache localStorage
     const cached = JSON.parse(localStorage.getItem('eps_cli') || '[]');
     if (cached.length > 0) CLI = cached.map(c => normalizarCliente(c));
   }
@@ -586,8 +578,6 @@ async function syncAll() {
 
   renderAll();
 
-  // Garante que o dot sempre termina visível
-  // (sheetReq já chama setSyncStatus ao conectar; aqui cobre o caso offline puro)
   const dot = document.getElementById('sync-dot');
   if (dot && dot.classList.contains('sync')) {
     setSyncStatus('ok', `📦 Dados locais · ${CLI.length} cliente(s)`);
