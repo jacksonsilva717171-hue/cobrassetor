@@ -431,7 +431,7 @@ async function confirmarPag() {
 
   // Bloqueia sync automático por 15s para não sobrescrever dados recém-salvos
   bloqSync = true;
-  setTimeout(() => { bloqSync = false; }, 15000);
+  setTimeout(() => { bloqSync = false; }, 60000); // 60s — tempo para post chegar ao Sheets
 
   // Fecha modal e atualiza lista na hora
   if (btn) { btn.disabled = false; btn.textContent = '✅ Confirmar Pagamento'; }

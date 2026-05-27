@@ -546,7 +546,19 @@ async function syncAll() {
   const despData = extArr(rDesp, 'data', 'despesas', 'rows', 'result');
 
   if (cliData !== null && cliData.length > 0) {
-    CLI = cliData.map(c => normalizarCliente(c));
+    // Merge: nunca retroagir proxVenc local — se local está à frente do Sheets,
+    // mantém o valor local (pagamento confirmado mas ainda não gravado no Sheets)
+    const localById = {};
+    CLI.forEach(c => { if (c.id) localById[c.id] = c; });
+
+    CLI = cliData.map(c => {
+      const norm = normalizarCliente(c);
+      const local = localById[norm.id];
+      if (local && local.proxVenc > norm.proxVenc) {
+        norm.proxVenc = local.proxVenc; // mantém o pagamento local mais recente
+      }
+      return norm;
+    });
     localStorage.setItem('eps_cli', JSON.stringify(CLI));   // atualiza cache local
   } else if (CLI.length === 0) {
     // resposta veio vazia ou formato inválido → usa cache localStorage
@@ -601,7 +613,12 @@ function normalizarCliente(c) {
     // campos numéricos
     proxVenc:  pv,
     vencDia:   parseInt(String(c.vencDia  || '').replace(/\..*$/, '')) || 1,
-    valor:     parseFloat(String(c.valor  || '').replace(/[^\d.]/g, '')) || 0,
+    valor:     (() => {
+      let v = String(c.valor || '').trim().replace(/[^\d.,]/g, '');
+      // formato brasileiro (ex: "1.500,00") → inglês ("1500.00")
+      if (v.includes(',')) v = v.replace(/\./g, '').replace(',', '.');
+      return parseFloat(v) || 0;
+    })(),
     ordemRua:  parseInt(c.ordemRua) || 9999,
     status:    c.status || 'ativo',
   };
