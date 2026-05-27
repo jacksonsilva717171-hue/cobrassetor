@@ -391,9 +391,14 @@ async function desfazerPag() {
   }
 }
 
+let _pagando = false; // guard contra toque duplo no mobile
+
 async function confirmarPag() {
+  if (_pagando) return;          // bloqueia 2ª chamada antes da 1ª terminar
+  _pagando = true;
+
   const c = CLI.find(x => x.id === pagId);
-  if (!c || !pagMes) return;
+  if (!c || !pagMes) { _pagando = false; return; }
 
   const btn = document.getElementById('btn-confirmar-pag');
   if (btn) { btn.disabled = true; btn.textContent = 'Salvando...'; }
@@ -430,6 +435,7 @@ async function confirmarPag() {
 
   // Fecha modal e atualiza lista na hora
   if (btn) { btn.disabled = false; btn.textContent = '✅ Confirmar Pagamento'; }
+  _pagando = false;  // libera guard
   closePag();
   renderAll();
   toast(`✅ ${c.nome} — Pago! Próx: Dia ${c.vencDia}/${lbM(novoPv)}`);
