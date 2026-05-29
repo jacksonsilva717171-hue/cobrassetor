@@ -340,7 +340,6 @@ function openPag(id) {
   setForma(pagForma);
 
   // Desfazer: aparece se proxVenc está adiantado
-  const yh     = YM(new Date());
   const divDes = document.getElementById('p-desfazer');
   if (pv > yh && divDes) {
     const voltar = [addM(pv,-1), addM(pv,-2), addM(pv,-3)].filter(m => m > 0);
