@@ -468,8 +468,6 @@ async function confirmarPag() {
 
   // Envia para Sheets em background (não bloqueia a UI)
   sheetPost('addPagamento', pag).catch(() => {});
-  // Garante que proxVenc seja atualizado na planilha mesmo se addPagamento não o fizer
-  sheetPost('editCliente', { ...c, proxVenc: novoPv, obs: c.obs || '' }).catch(() => {});
 }
 
 // ─────────────────────────────────────────────
