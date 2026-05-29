@@ -308,12 +308,24 @@ function openPag(id) {
     ${c.chavePix && c.pix === 'sim' ? `<br>🔑 Chave PIX: <strong>${c.chavePix}</strong>` : ''}`;
 
   // Meses de pagamento
-  const pv   = parseInt(c.proxVenc) || YM(new Date());
-  pagMes = pv;
-  const opts = [pv, addM(pv,1), addM(pv,2), addM(pv,3)];
-  document.getElementById('p-mes').innerHTML = opts.map((m, i) =>
-    `<button class="pbtn${i===0?' sel':''}" onclick="selMes(this,${m})">${lbM(m)}${i===0?' (atual)':' (+'+i+')'}</button>`
-  ).join('');
+  const pv  = parseInt(c.proxVenc) || YM(new Date());
+  const yh  = YM(new Date());
+  const dh  = new Date().getDate();
+  const vd  = parseInt(c.vencDia) || 1;
+  // Avança o mês padrão até que pagar esse mês tire o cliente da lista de atraso
+  let defaultMes = pv;
+  for (let m = pv; m <= addM(yh, 2); m = addM(m, 1)) {
+    const testPv = addM(m, 1);
+    if (testPv > yh || (testPv === yh && vd >= dh)) { defaultMes = m; break; }
+  }
+  pagMes = defaultMes;
+  let opts = [pv, addM(pv,1), addM(pv,2), addM(pv,3)];
+  if (!opts.includes(defaultMes)) opts.push(defaultMes);
+  document.getElementById('p-mes').innerHTML = opts.map((m) => {
+    const isSel = m === defaultMes;
+    const lbl = m < yh ? ' (passado)' : m === yh && vd < dh ? ' (passado)' : m === pv && m !== defaultMes ? ' (1º)' : '';
+    return `<button class="pbtn${isSel?' sel':''}" onclick="selMes(this,${m})">${lbM(m)}${lbl}</button>`;
+  }).join('');
 
   // Formas de pagamento: cobrador não vê pix_auto
   const btnPixA = document.getElementById('btn-pf-pixa');
@@ -406,6 +418,17 @@ async function confirmarPag() {
   const novoPv = parseInt(addM(pagMes, 1));
   const obs    = document.getElementById('p-obs')?.value || '';
 
+  // Avisa se já existe pagamento para o mesmo mês
+  const pagDuplicado = PAG.some(p => p.cid === c.id && parseInt(p.mesPago) === parseInt(pagMes));
+  if (pagDuplicado) {
+    const ok = confirm(`⚠️ ${c.nome} já tem pagamento registrado para ${lbM(pagMes)}.\n\nConfirmar mesmo assim?`);
+    if (!ok) {
+      if (btn) { btn.disabled = false; btn.textContent = '✅ Confirmar Pagamento'; }
+      _pagando = false;
+      return;
+    }
+  }
+
   const pag = {
     cid:     c.id,
     nome:    c.nome,
@@ -445,6 +468,8 @@ async function confirmarPag() {
 
   // Envia para Sheets em background (não bloqueia a UI)
   sheetPost('addPagamento', pag).catch(() => {});
+  // Garante que proxVenc seja atualizado na planilha mesmo se addPagamento não o fizer
+  sheetPost('editCliente', { ...c, proxVenc: novoPv, obs: c.obs || '' }).catch(() => {});
 }
 
 // ─────────────────────────────────────────────
