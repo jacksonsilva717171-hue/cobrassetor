@@ -61,14 +61,16 @@ function _atualizarBadgesCobrado(setor) {
 
 function _filtrarPagsPorSetor(setor) {
   return PAG.filter(p => {
+    const pSetor = (p.setor || '').trim().toLowerCase();
     if (USER.role === 'proprietario') {
-      if (!(USER.setores||[]).includes(p.setor)) return false;
+      const meusNorm = (USER.setores || []).map(s => s.trim().toLowerCase());
+      if (!meusNorm.includes(pSetor)) return false;
     }
     if (USER.role === 'cobrador') {
       const meus = Array.isArray(USER.setores) ? USER.setores : [USER.setor].filter(Boolean);
-      if (!meus.includes(p.setor)) return false;
+      if (!meus.map(s => s.trim().toLowerCase()).includes(pSetor)) return false;
     }
-    if (setor && p.setor !== setor) return false;
+    if (setor && pSetor !== setor.trim().toLowerCase()) return false;
     return true;
   });
 }

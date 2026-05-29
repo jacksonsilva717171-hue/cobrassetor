@@ -562,10 +562,10 @@ async function syncAll() {
     if (cached.length > 0) CLI = cached.map(c => normalizarCliente(c));
   }
 
-  if (pagData !== null) {
+  if (pagData !== null && pagData.length > 0) {
     PAG = pagData;
-    if (PAG.length > 0) localStorage.setItem('eps_pag', JSON.stringify(PAG));
-  } else if (PAG.length === 0) {
+    localStorage.setItem('eps_pag', JSON.stringify(PAG));
+  } else {
     PAG = JSON.parse(localStorage.getItem('eps_pag') || '[]');
   }
 

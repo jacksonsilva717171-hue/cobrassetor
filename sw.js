@@ -1,5 +1,5 @@
-// CobraSetor — Service Worker v11
-const CACHE = 'cobrassetor-v11';
+// CobraSetor — Service Worker v12
+const CACHE = 'cobrassetor-v12';
 const ASSETS = [
   './index.html',
   './js/config.js',
