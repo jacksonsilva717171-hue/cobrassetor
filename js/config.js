@@ -569,6 +569,26 @@ async function syncAll() {
     PAG = JSON.parse(localStorage.getItem('eps_pag') || '[]');
   }
 
+  // Corrige proxVenc baseado nos pagamentos registrados.
+  // O Apps Script addPagamento não atualiza a coluna proxVenc na planilha,
+  // então derivamos o valor correto a partir do maior mesPago de cada cliente.
+  {
+    const maxMesPago = {};
+    for (const p of PAG) {
+      const mes = parseInt(p.mesPago) || 0;
+      if (mes && (!maxMesPago[p.cid] || mes > maxMesPago[p.cid])) maxMesPago[p.cid] = mes;
+    }
+    let corrigido = false;
+    CLI = CLI.map(c => {
+      const max = maxMesPago[c.id];
+      if (!max) return c;
+      const expectedPv = addM(max, 1);
+      if (expectedPv > (parseInt(c.proxVenc) || 0)) { corrigido = true; return { ...c, proxVenc: expectedPv }; }
+      return c;
+    });
+    if (corrigido) localStorage.setItem('eps_cli', JSON.stringify(CLI));
+  }
+
   if (despData !== null) {
     DESP = despData;
     if (DESP.length > 0) localStorage.setItem('cobr_desp', JSON.stringify(DESP));
@@ -606,7 +626,12 @@ function normalizarCliente(c) {
     })(),
     bairro:   String(c.bairro || ''),
     cidade:   String(c.cidade || ''),
-    obs:         c.obs != null ? String(c.obs) : '',
+    obs: (() => {
+      const o = c.obs != null ? String(c.obs).trim() : '';
+      // Apps Script bug: addPagamento grava novoPv (ex: "202606") na coluna obs
+      if (/^20[2-9]\d(0[1-9]|1[0-2])$/.test(o)) return '';
+      return o;
+    })(),
     tel:         String(c.tel   || ''),
     inativadoEm: c.inativadoEm ? String(c.inativadoEm) : '',
     // campos numéricos
