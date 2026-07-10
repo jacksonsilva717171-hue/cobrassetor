@@ -481,7 +481,15 @@ function extArr(r, ...keys) {
 }
 
 async function syncAll() {
-  if (bloqSync) { toast('⏳ Aguarde, sincronização bloqueada por 15s após pagamento.'); return; }
+  // Restaura bloqueio de sync do sessionStorage (sobrevive a page reload — ex: iOS ao retornar do WhatsApp)
+  if (!bloqSync) {
+    const exp = parseInt(sessionStorage.getItem('bloqSync_exp') || '0');
+    if (exp > Date.now()) {
+      bloqSync = true;
+      setTimeout(() => { bloqSync = false; sessionStorage.removeItem('bloqSync_exp'); }, exp - Date.now());
+    }
+  }
+  if (bloqSync) return; // silencioso — não exibir toast ao restaurar de reload
   if (!USER) return;
 
   setSyncStatus('sync', 'Carregando dados...');
@@ -493,12 +501,44 @@ async function syncAll() {
   CLI.forEach(c => { if (c.id) localById[c.id] = c; });
 
   function applyMerge(arr) {
-    return arr.map(c => {
+    const merged = arr.map(c => {
       const norm = normalizarCliente(c);
       const local = localById[norm.id];
-      if (local && local.proxVenc > norm.proxVenc) norm.proxVenc = local.proxVenc;
+      if (local) {
+        // Preserva proxVenc local se estiver mais adiantado (pagamento recente ainda não refletido no Sheets)
+        if (local.proxVenc > norm.proxVenc) norm.proxVenc = local.proxVenc;
+        // Apps Script bug: addPagamento às vezes corrompe colunas do cliente
+        // (ex: grava valor_mensalidade em vencDia e zera valor)
+        // → preserva dados locais válidos quando o Sheets retorna dados inválidos
+        if (local.valor > 0 && norm.valor === 0) norm.valor = local.valor;
+        if (local.vencDia >= 1 && local.vencDia <= 31 &&
+            (norm.vencDia < 1 || norm.vencDia > 31)) {
+          norm.vencDia = local.vencDia;
+        }
+        // Preserva remarcação local ainda válida (data futura) — Sheets pode não
+        // ter refletido a remarcação a tempo do próximo sync (delay/bug do Apps Script)
+        if (local.status === 'remarcado' && local.dataRemarcacao && norm.status !== 'remarcado') {
+          const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
+          const ret  = new Date(local.dataRemarcacao + 'T00:00:00');
+          if (ret > hoje) {
+            norm.status         = 'remarcado';
+            norm.dataRemarcacao = local.dataRemarcacao;
+          }
+        }
+      }
       return norm;
     });
+
+    // Reintegra clientes que existem só localmente (cadastro/edição feito
+    // neste dispositivo mas ainda não refletido no Sheets) — sem isso, um
+    // cadastro cuja gravação no Apps Script falhar/atrasar some da lista
+    // assim que este sync roda.
+    const mergedIds = new Set(merged.map(c => c.id));
+    const somenteLocais = Object.values(localById)
+      .filter(c => c.id && !mergedIds.has(c.id))
+      .map(c => normalizarCliente(c));
+
+    return merged.concat(somenteLocais);
   }
 
   // ── Determina promise de clientes ────────────────────────────────────────
@@ -636,7 +676,11 @@ function normalizarCliente(c) {
     inativadoEm: c.inativadoEm ? String(c.inativadoEm) : '',
     // campos numéricos
     proxVenc:  pv,
-    vencDia:   parseInt(String(c.vencDia  || '').replace(/\..*$/, '')) || 1,
+    vencDia:   (() => {
+      const d = parseInt(String(c.vencDia || '').replace(/\..*$/, '')) || 1;
+      // Apps Script bug: às vezes grava valor_mensalidade na coluna vencDia (ex: 50, 200)
+      return (d >= 1 && d <= 31) ? d : 1;
+    })(),
     valor:     (() => {
       let v = String(c.valor || '').trim().replace(/[^\d.,]/g, '');
       // formato brasileiro (ex: "1.500,00") → inglês ("1500.00")

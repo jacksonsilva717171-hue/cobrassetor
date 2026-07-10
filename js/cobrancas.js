@@ -453,9 +453,12 @@ async function confirmarPag() {
   pagLocal.push(pag);
   localStorage.setItem('eps_pag', JSON.stringify(pagLocal));
 
-  // Bloqueia sync automático por 15s para não sobrescrever dados recém-salvos
+  // Bloqueia sync por 5min para não sobrescrever dados recém-salvos
+  // Persiste no sessionStorage para sobreviver a page reload (iOS retorna do WhatsApp recarregando a página)
   bloqSync = true;
-  setTimeout(() => { bloqSync = false; }, 60000); // 60s — tempo para post chegar ao Sheets
+  const _bloqExp = Date.now() + 300000; // 5 minutos
+  sessionStorage.setItem('bloqSync_exp', _bloqExp.toString());
+  setTimeout(() => { bloqSync = false; sessionStorage.removeItem('bloqSync_exp'); }, 300000);
 
   // Fecha modal e atualiza lista na hora
   if (btn) { btn.disabled = false; btn.textContent = '✅ Confirmar Pagamento'; }
@@ -524,7 +527,11 @@ async function confirmarRemarcar() {
   renderAll();
 
   const retorno = new Date(data + 'T00:00:00').toLocaleDateString('pt-BR');
-  toast(`🔵 ${c.nome} remarcado para ${retorno}`);
+  if (r && r.ok === false) {
+    toast(`⚠️ Remarcação de ${c.nome} salva localmente, mas o Sheets recusou — será reenviada no próximo sync.`, 'err');
+  } else {
+    toast(`🔵 ${c.nome} remarcado para ${retorno}`);
+  }
 }
 
 // ─────────────────────────────────────────────

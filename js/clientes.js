@@ -270,8 +270,11 @@ async function salvar() {
   closeModal();
   renderAll();
 
-  // Envia para Sheets em background
-  sheetPost(acao, dados).catch(() => {});
+  // Envia para Sheets em background — avisa se o Apps Script recusar
+  // (resposta {ok:false} não é erro de rede, então não cai no catch)
+  sheetPost(acao, dados)
+    .then(r => { if (r && r.ok === false) toast(`⚠️ ${dados.nome} salvo localmente, mas o Sheets recusou — será reenviado no próximo sync.`, 'err'); })
+    .catch(() => {});
 }
 
 // ─────────────────────────────────────────────
