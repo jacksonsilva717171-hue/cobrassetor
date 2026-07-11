@@ -308,7 +308,12 @@ async function salvar() {
   // Envia para Sheets em background — avisa se o Apps Script recusar
   // (resposta {ok:false} não é erro de rede, então não cai no catch)
   sheetPost(acao, dados)
-    .then(r => { if (r && r.ok === false) toast(`⚠️ ${dados.nome} salvo localmente, mas o Sheets recusou — será reenviado no próximo sync.`, 'err'); })
+    .then(r => {
+      if (r && r.ok === false) {
+        console.error('addCliente/editCliente recusado pelo Apps Script:', r.erro);
+        toast(`⚠️ ${dados.nome} salvo localmente, mas o Sheets recusou: ${r.erro || 'erro desconhecido'}`, 'err');
+      }
+    })
     .catch(() => {});
 }
 

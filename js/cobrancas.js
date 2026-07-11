@@ -533,7 +533,8 @@ async function confirmarRemarcar() {
 
   const retorno = new Date(data + 'T00:00:00').toLocaleDateString('pt-BR');
   if (r && r.ok === false) {
-    toast(`⚠️ Remarcação de ${c.nome} salva localmente, mas o Sheets recusou — será reenviada no próximo sync.`, 'err');
+    console.error('remarcarCliente recusado pelo Apps Script:', r.erro);
+    toast(`⚠️ Remarcação de ${c.nome} salva localmente, mas o Sheets recusou: ${r.erro || 'erro desconhecido'}`, 'err');
   } else {
     toast(`🔵 ${c.nome} remarcado para ${retorno}`);
   }
