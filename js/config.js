@@ -193,16 +193,17 @@ function hojeISO() {
 function st(c) {
   if (c.status === 'inativo') return 'inativo';
 
-  // Remarcado: verifica se a data de retorno já chegou
-  if (c.status === 'remarcado' && c.dataRemarcacao) {
+  // Remarcado: a única fonte de verdade é dataRemarcacao (persistida no Sheets
+  // pela ação remarcarCliente) — não depende de c.status, que nunca é gravado na planilha
+  if (c.dataRemarcacao) {
     const hoje = new Date(); hoje.setHours(0,0,0,0);
     const ret  = new Date(c.dataRemarcacao + 'T00:00:00');
     if (ret > hoje) return 'remarcado'; // ainda no futuro
-    // data de retorno chegou → reativa automaticamente (localmente)
+    // data de retorno chegou → reativa automaticamente (localmente e no Sheets)
     c.status = 'ativo';
     c.dataRemarcacao = '';
     // persiste a reativação em segundo plano sem bloquear UI
-    setTimeout(() => sheetPost('editCliente', {...c}).catch(() => {}), 100);
+    setTimeout(() => sheetPost('remarcarCliente', { id: c.id, dataRemarcacao: '' }).catch(() => {}), 100);
   }
 
   return _stCalc(c);
@@ -515,15 +516,14 @@ async function syncAll() {
             (norm.vencDia < 1 || norm.vencDia > 31)) {
           norm.vencDia = local.vencDia;
         }
-        // Preserva remarcação local ainda válida (data futura) — Sheets pode não
-        // ter refletido a remarcação a tempo do próximo sync (delay/bug do Apps Script)
-        if (local.status === 'remarcado' && local.dataRemarcacao && norm.status !== 'remarcado') {
+        // dataRemarcacao agora é persistida no Sheets (ação remarcarCliente) e o
+        // Sheets é a fonte de verdade — mas se o POST de remarcarCliente ainda não
+        // chegou lá (race entre remarcar e este sync), preserva o valor local
+        // enquanto ele continuar válido (data futura) e o remoto vier vazio.
+        if (local.dataRemarcacao && !norm.dataRemarcacao) {
           const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
           const ret  = new Date(local.dataRemarcacao + 'T00:00:00');
-          if (ret > hoje) {
-            norm.status         = 'remarcado';
-            norm.dataRemarcacao = local.dataRemarcacao;
-          }
+          if (ret > hoje) norm.dataRemarcacao = local.dataRemarcacao;
         }
       }
       return norm;
@@ -674,6 +674,12 @@ function normalizarCliente(c) {
     })(),
     tel:         String(c.tel   || ''),
     inativadoEm: c.inativadoEm ? String(c.inativadoEm) : '',
+    dataRemarcacao: (() => {
+      if (!c.dataRemarcacao) return '';
+      // Sheets pode devolver a célula como objeto Date em vez de string 'YYYY-MM-DD'
+      if (c.dataRemarcacao instanceof Date) return c.dataRemarcacao.toISOString().slice(0, 10);
+      return String(c.dataRemarcacao).slice(0, 10);
+    })(),
     // campos numéricos
     proxVenc:  pv,
     vencDia:   (() => {

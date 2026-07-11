@@ -174,7 +174,7 @@ function _renderPendentes(el, setor, tab) {
 
   // Aba remarcados: mostra apenas remarcados para hoje ou passado (incluindo com data de retorno chegando)
   if (tab === 'remarcado') {
-    const rem = base.filter(c => c.status === 'remarcado');
+    const rem = base.filter(c => st(c) === 'remarcado');
     if (!rem.length) {
       el.innerHTML = '<div class="empty"><div class="eico">🔵</div>Nenhum cliente remarcado.</div>';
       return;
@@ -511,14 +511,19 @@ async function confirmarRemarcar() {
 
   if (!data) { toast('⚠️ Selecione a data de retorno.', 'err'); return; }
 
-  const dados = {
-    ...c,
-    status:          'remarcado',
-    dataRemarcacao:  data,
-    obs: obs ? `${c.obs ? c.obs + ' | ' : ''}[Remarcado ${new Date(data+'T00:00:00').toLocaleDateString('pt-BR')}]${obs ? ': ' + obs : ''}` : c.obs || '',
-  };
+  const novoObs = obs
+    ? `${c.obs ? c.obs + ' | ' : ''}[Remarcado ${new Date(data+'T00:00:00').toLocaleDateString('pt-BR')}]${obs ? ': ' + obs : ''}`
+    : c.obs || '';
 
-  const r = await sheetPost('editCliente', dados);
+  const dados = { ...c, status: 'remarcado', dataRemarcacao: data, obs: novoObs };
+
+  // Ação dedicada: grava só a coluna dataRemarcacao na planilha, sem risco de
+  // sobrescrever o resto da linha com um snapshot local desatualizado.
+  const r = await sheetPost('remarcarCliente', { id: c.id, dataRemarcacao: data });
+  if (novoObs !== (c.obs || '')) {
+    sheetPost('editCliente', { ...c, obs: novoObs }).catch(() => {});
+  }
+
   const idx = CLI.findIndex(x => x.id === remarkId);
   if (idx >= 0) CLI[idx] = normalizarCliente(dados);
   localStorage.setItem('eps_cli', JSON.stringify(CLI));
