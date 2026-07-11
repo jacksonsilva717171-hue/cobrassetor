@@ -1515,6 +1515,7 @@ textarea { resize: vertical; min-height: 60px; }
       <div class="fg"><label>Cidade / UF</label><input id="f-cidade" placeholder="Cidade - SP"></div>
 
       <div class="fg"><label>Setor *</label>
+        <select id="f-setor-restrito" style="display:none;" onchange="onSetorRestritoChange()"></select>
         <input id="f-setor" placeholder="Ex: Setor 01" list="dl-setores" oninput="onSetorChange()">
         <datalist id="dl-setores"></datalist>
       </div>

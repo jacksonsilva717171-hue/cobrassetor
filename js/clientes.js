@@ -129,18 +129,49 @@ function openModal(id = null) {
     if (!c) { toast('Cliente não encontrado.', 'err'); return; }
     document.getElementById('mtitle').textContent = '✏️ EDITAR CLIENTE';
     _preencherFormCliente(c);
+    _popularSetorRestrito(c.setor);
   } else {
     // Novo
     document.getElementById('mtitle').textContent = '✚ NOVO CLIENTE';
     _limparFormCliente();
-    // Pré-preenche setor se proprietário tem só 1
-    if (USER.role === 'proprietario' && (USER.setores||[]).length === 1) {
-      const fi = document.getElementById('f-setor');
-      if (fi) { fi.value = USER.setores[0]; onSetorChange(); }
-    }
+    _popularSetorRestrito('');
   }
 
   document.getElementById('mbg').classList.add('open');
+}
+
+// Usuários não-admin (proprietário) só podem cadastrar/editar clientes nos
+// próprios setores — troca o campo livre por um <select> restrito à lista de
+// getMeusSetores(), eliminando divergências de digitação (ex: "Setor 2" vs
+// "Setor 02") que travavam o cadastro na checagem de permissão de salvar().
+function _popularSetorRestrito(valorAtual) {
+  const sel = document.getElementById('f-setor-restrito');
+  const inp = document.getElementById('f-setor');
+  if (!sel || !inp) return;
+
+  const restrito = USER.role !== 'admin';
+  sel.style.display = restrito ? '' : 'none';
+  inp.style.display = restrito ? 'none' : '';
+
+  if (!restrito) return;
+
+  const setores = getMeusSetores();
+  sel.innerHTML = '<option value="">Selecione...</option>' + setores.map(s => `<option value="${s}">${s}</option>`).join('');
+  // Compara ignorando maiúsculas/espaços — o valor salvo do cliente pode
+  // divergir levemente do texto exato em USER.setores
+  const idxAtual = setores.findIndex(s => s.trim().toLowerCase() === String(valorAtual || '').trim().toLowerCase());
+  sel.value = idxAtual >= 0 ? setores[idxAtual]
+            : (setores.length === 1 ? setores[0] : '');
+  inp.value = sel.value; // f-setor continua sendo o campo que salvar() lê
+  if (inp.value) onSetorChange();
+}
+
+function onSetorRestritoChange() {
+  const sel = document.getElementById('f-setor-restrito');
+  const inp = document.getElementById('f-setor');
+  if (!sel || !inp) return;
+  inp.value = sel.value;
+  onSetorChange();
 }
 
 function closeModal() {
@@ -208,10 +239,14 @@ async function salvar() {
   if (!vencDia || vencDia < 1 || vencDia > 31) { toast('⚠️ Dia de vencimento inválido (1–31).', 'err'); return; }
   if (!valor || valor <= 0) { toast('⚠️ Valor mensal inválido.', 'err'); return; }
 
-  // Verifica se proprietário pode criar neste setor
-  if (USER.role === 'proprietario' && !(USER.setores||[]).includes(setor)) {
-    toast('⚠️ Você não tem permissão para este setor.', 'err');
-    return;
+  // Verifica se proprietário pode criar neste setor — comparação tolerante a
+  // maiúsculas/espaços, igual ao filtro usado em getClisFiltrados()
+  if (USER.role === 'proprietario') {
+    const setoresNorm = (USER.setores || []).map(s => s.trim().toLowerCase());
+    if (!setoresNorm.includes(setor.trim().toLowerCase())) {
+      toast('⚠️ Você não tem permissão para este setor.', 'err');
+      return;
+    }
   }
 
   const ordemRua = parseInt(document.getElementById('f-ordem-rua')?.value) || null;
