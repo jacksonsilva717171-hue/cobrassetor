@@ -519,15 +519,19 @@ async function syncAll() {
   setSyncStatus('sync', 'Carregando dados...');
 
   // ── Monta map local (localStorage + memória) para merge de proxVenc ──────
+  // Chave composta id+setor: alguns clientes importados (ex: VIN0423) têm o
+  // MESMO id em setores diferentes mas são pessoas diferentes — chavear só
+  // por id faz o merge misturar dados de um cliente com o de outro.
+  const chaveCli = c => (c.id || '') + '|' + (c.setor || '');
   const cachedForMerge = JSON.parse(localStorage.getItem('eps_cli') || '[]');
   const localById = {};
-  cachedForMerge.forEach(c => { if (c.id) localById[c.id] = c; });
-  CLI.forEach(c => { if (c.id) localById[c.id] = c; });
+  cachedForMerge.forEach(c => { if (c.id) localById[chaveCli(c)] = c; });
+  CLI.forEach(c => { if (c.id) localById[chaveCli(c)] = c; });
 
   function applyMerge(arr) {
     const merged = arr.map(c => {
       const norm = normalizarCliente(c);
-      const local = localById[norm.id];
+      const local = localById[chaveCli(norm)];
       if (local) {
         // Preserva proxVenc local se estiver mais adiantado (pagamento recente ainda não refletido no Sheets)
         if (local.proxVenc > norm.proxVenc) norm.proxVenc = local.proxVenc;
@@ -556,9 +560,9 @@ async function syncAll() {
     // neste dispositivo mas ainda não refletido no Sheets) — sem isso, um
     // cadastro cuja gravação no Apps Script falhar/atrasar some da lista
     // assim que este sync roda.
-    const mergedIds = new Set(merged.map(c => c.id));
+    const mergedKeys = new Set(merged.map(chaveCli));
     const somenteLocais = Object.values(localById)
-      .filter(c => c.id && !mergedIds.has(c.id))
+      .filter(c => c.id && !mergedKeys.has(chaveCli(c)))
       .map(c => normalizarCliente(c));
 
     return merged.concat(somenteLocais);
@@ -606,13 +610,16 @@ async function syncAll() {
         for (const s of meus) {
           const r = await sheetReq('getClientes', { setor: s });
           const arr = extArr(r, 'data', 'clientes', 'rows', 'result');
-          if (arr) allCli.push(...arr);
+          // garante c.setor mesmo se o Apps Script não devolver a chave
+          if (arr) allCli.push(...arr.map(c => ({ ...c, setor: c.setor || s })));
         }
         if (allCli.length > 0) {
+          // Chave composta id+setor — ver comentário em chaveCli() acima
           const seen = new Set();
           const deduped = allCli.filter(c => {
-            if (!c.id || seen.has(c.id)) return false;
-            seen.add(c.id); return true;
+            const key = chaveCli(c);
+            if (!c.id || seen.has(key)) return false;
+            seen.add(key); return true;
           });
           CLI = applyMerge(deduped);
           localStorage.setItem('eps_cli', JSON.stringify(CLI));
@@ -635,15 +642,19 @@ async function syncAll() {
   // Corrige proxVenc baseado nos pagamentos registrados.
   // O Apps Script addPagamento não atualiza a coluna proxVenc na planilha,
   // então derivamos o valor correto a partir do maior mesPago de cada cliente.
+  // Chave composta cid+setor — ver comentário em chaveCli() acima: sem isso,
+  // o pagamento de um cliente "vaza" pra outro cliente diferente que tem o
+  // mesmo id só porque foi importado num setor diferente.
   {
     const maxMesPago = {};
     for (const p of PAG) {
       const mes = parseInt(p.mesPago) || 0;
-      if (mes && (!maxMesPago[p.cid] || mes > maxMesPago[p.cid])) maxMesPago[p.cid] = mes;
+      const key = (p.cid || '') + '|' + (p.setor || '');
+      if (mes && (!maxMesPago[key] || mes > maxMesPago[key])) maxMesPago[key] = mes;
     }
     let corrigido = false;
     CLI = CLI.map(c => {
-      const max = maxMesPago[c.id];
+      const max = maxMesPago[(c.id || '') + '|' + (c.setor || '')];
       if (!max) return c;
       const expectedPv = addM(max, 1);
       if (expectedPv > (parseInt(c.proxVenc) || 0)) { corrigido = true; return { ...c, proxVenc: expectedPv }; }
