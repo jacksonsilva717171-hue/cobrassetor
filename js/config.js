@@ -364,26 +364,48 @@ async function fetchComTimeout(url, opts = {}, ms = 8000) {
   }
 }
 
+async function _tentarSheetReq(url, acao, dados) {
+  const params = new URLSearchParams({ acao, ...dados });
+  // cache:'no-store' garante que o navegador nunca reaproveite uma resposta
+  // antiga do Apps Script — cada "Sincronizar" busca dado fresco de verdade
+  const r    = await fetchComTimeout(`${url}?${params}`, { method: 'GET', cache: 'no-store' }, 10000);
+  const text = await r.text();
+  return JSON.parse(text); // pode lançar — às vezes o Apps Script retorna HTML de erro
+}
+
+// Uma URL antiga do Apps Script salva neste navegador (tela Configurações,
+// chaves cobr_script_url/eps_script_url) fica presa no localStorage para
+// sempre — nem "Sincronizar" nem F5/Ctrl+Shift+R limpam isso, então o
+// navegador continua batendo num deployment desatualizado/quebrado e caindo
+// no fallback local (dados antigos) silenciosamente. Se a URL configurada
+// falhar e for diferente da URL padrão embutida no código, tenta a padrão
+// uma vez; se funcionar, autocorrige o localStorage para não repetir o erro.
+let _tentouUrlPadrao = false;
 async function sheetReq(acao, dados = {}) {
   if (!SCRIPT_URL) return offlineReq(acao, dados);
+  setSyncStatus('sync', 'Conectando ao Sheets...');
   try {
-    setSyncStatus('sync', 'Conectando ao Sheets...');
-    const params = new URLSearchParams({ acao, ...dados });
-    const r    = await fetchComTimeout(`${SCRIPT_URL}?${params}`, { method: 'GET' }, 10000);
-    const text = await r.text();
-    // tenta parsear JSON — às vezes o Apps Script retorna HTML de erro
-    let json;
-    try { json = JSON.parse(text); }
-    catch(pe) {
-      console.warn('Sheets retornou resposta não-JSON:', text.slice(0,200));
-      setSyncStatus('err', '⚠️ Sheets retornou erro — usando dados locais');
-      return offlineReq(acao, dados);
-    }
+    const json = await _tentarSheetReq(SCRIPT_URL, acao, dados);
     setSyncStatus('ok', '✅ Sincronizado · ' + new Date().toLocaleTimeString('pt-BR'));
     return json;
   } catch (e) {
-    console.warn('sheetReq erro:', acao, e.message);
-    setSyncStatus('err', '🔴 Sem conexão — dados locais');
+    console.warn('sheetReq erro em', SCRIPT_URL, ':', e.message);
+    if (SCRIPT_URL !== SCRIPT_URL_DEFAULT && !_tentouUrlPadrao) {
+      _tentouUrlPadrao = true;
+      try {
+        const json = await _tentarSheetReq(SCRIPT_URL_DEFAULT, acao, dados);
+        SCRIPT_URL = SCRIPT_URL_DEFAULT;
+        localStorage.setItem('cobr_script_url', SCRIPT_URL_DEFAULT);
+        localStorage.setItem('eps_script_url', SCRIPT_URL_DEFAULT);
+        setSyncStatus('ok', '✅ Sincronizado (URL corrigida automaticamente)');
+        toast('🔧 A URL do Sheets salva neste navegador estava desatualizada — corrigida automaticamente.', 'warn');
+        return json;
+      } catch (e2) {
+        console.warn('URL padrão também falhou:', e2.message);
+      }
+    }
+    setSyncStatus('err', '🔴 Sem conexão com o Sheets — dados locais (podem estar desatualizados)');
+    toast('🔴 Não foi possível buscar dados atualizados do Sheets — mostrando dados salvos neste navegador.', 'err');
     return offlineReq(acao, dados);
   }
 }
@@ -394,6 +416,7 @@ async function sheetPost(acao, dados = {}) {
     setSyncStatus('sync', 'Salvando...');
     const r    = await fetchComTimeout(SCRIPT_URL, {
       method: 'POST',
+      cache:  'no-store',
       body:   JSON.stringify({ acao, ...dados }),
     }, 8000);
     const json = await r.json();
