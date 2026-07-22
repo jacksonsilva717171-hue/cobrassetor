@@ -11,7 +11,7 @@
 const SHEET_ID_DEFAULT = '15tc3NJ_N1CLlSNEP3CYo8Uze-trMNrOy864dUpUhM98';
 
 // URL do Apps Script do app EPS em produção (fallback hardcoded para compatibilidade)
-const SCRIPT_URL_DEFAULT = 'https://script.google.com/macros/s/AKfycbwO1PYjuVEj9yMgdZZdAPO9jchDxolwzBxjp1wOe7Mm6XRf6CMYXJlpH5sTHktNMXb9/exec';
+const SCRIPT_URL_DEFAULT = 'https://script.google.com/macros/s/AKfycbzyvuro1A0qZlXhy_dv2jKi6SGjVSm3LLYx3Y5NGpU-30RQacgYdt9PLi5un8D5HEc/exec';
 
 let SHEET_ID   = localStorage.getItem('cobr_sheet_id')  || SHEET_ID_DEFAULT;
 let SCRIPT_URL = localStorage.getItem('cobr_script_url')
