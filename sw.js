@@ -1,5 +1,5 @@
-// CobraSetor — Service Worker v20
-const CACHE = 'cobrassetor-v20';
+// CobraSetor — Service Worker v21
+const CACHE = 'cobrassetor-v21';
 const ASSETS = [
   './index.html',
   './js/config.js',
@@ -42,12 +42,23 @@ self.addEventListener('fetch', e => {
       e.request.url.includes('brasilapi.com')) {
     return;
   }
+  // Só o Cache API aceita gravar requisições GET — um POST (ou qualquer
+  // outro método) que escape do filtro acima faz cache.put() rejeitar
+  // (TypeError: método não suportado). Isso, mais o quota de armazenamento
+  // do navegador, pode fazer caches.open().then(c => c.put(...)) falhar.
+  if (e.request.method !== 'GET') return;
+
   e.respondWith(
     caches.match(e.request).then(cached => {
       return cached || fetch(e.request).then(resp => {
         if (resp && resp.status === 200 && resp.type === 'basic') {
           const clone = resp.clone();
-          caches.open(CACHE).then(c => c.put(e.request, clone));
+          // Gravação em segundo plano — .catch() evita "Uncaught (in
+          // promise)" quando cache.put() rejeita (quota cheia, etc.),
+          // sem impedir a resposta de chegar à página.
+          caches.open(CACHE)
+            .then(c => c.put(e.request, clone))
+            .catch(err => console.warn('SW: falha ao gravar no cache', e.request.url, err));
         }
         return resp;
       }).catch(() => cached);
