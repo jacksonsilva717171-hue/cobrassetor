@@ -8,10 +8,16 @@
 // ─────────────────────────────────────────────
 // CONFIGURAÇÃO SHEETS
 // ─────────────────────────────────────────────
-const SHEET_ID_DEFAULT = '15tc3NJ_N1CLlSNEP3CYo8Uze-trMNrOy864dUpUhM98';
+const SHEET_ID_DEFAULT = '1IFUcC9-ptG9WkO0MDGLtRXi5J0sV-TvY5V7XaaJcG4c';
 
 // URL do Apps Script do app EPS em produção (fallback hardcoded para compatibilidade)
-const SCRIPT_URL_DEFAULT = 'https://script.google.com/macros/s/AKfycbzyvuro1A0qZlXhy_dv2jKi6SGjVSm3LLYx3Y5NGpU-30RQacgYdt9PLi5un8D5HEc/exec';
+// Aponta pro script vinculado à planilha "EPS GESTAO" (a original, fonte de
+// verdade) — em 22/07 esse valor tinha sido trocado por engano pra um
+// deployment ligado a uma CÓPIA da planilha ("EPS_GESTAO_final (1)"), o que
+// fez pagamentos e cadastros feitos pelo app pararem na cópia em vez da
+// planilha real. Revertido em 23/07 depois de migrar de volta os dados que
+// só existiam na cópia.
+const SCRIPT_URL_DEFAULT = 'https://script.google.com/macros/s/AKfycbwO1PYjuVEj9yMgdZZdAPO9jchDxolwzBxjp1wOe7Mm6XRf6CMYXJlpH5sTHktNMXb9/exec';
 
 let SHEET_ID   = localStorage.getItem('cobr_sheet_id')  || SHEET_ID_DEFAULT;
 let SCRIPT_URL = localStorage.getItem('cobr_script_url')
