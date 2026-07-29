@@ -76,6 +76,8 @@ function doGet(e) {
     else if (acao === 'buscarClienteEm') resultado = buscarClienteEm(e.parameter.idPlanilha, e.parameter.id);
     else if (acao === 'removerPagamentos') resultado = removerPagamentos(e.parameter.idOriginal, e.parameter.cids);
     else if (acao === 'criarClienteEm') resultado = criarClienteEm(e.parameter.idPlanilha, e.parameter.id, e.parameter.novoId);
+    else if (acao === 'repararSetorVazio') resultado = repararSetorVazio();
+    else if (acao === 'testeCadastroSetores') resultado = testeCadastroSetores();
     else resultado = { ok: false, erro: 'Ação desconhecida: ' + acao };
   } catch(err) { resultado = { ok: false, erro: err.toString() }; }
   return jsonResponse(resultado);
@@ -642,34 +644,102 @@ function getClientes(setor) {
   return { ok: true, data: result };
 }
 
+// Serializa escritas concorrentes na planilha "clientes"/"PAGAMENTOS" — duas
+// execuções simultâneas (ex: notebook e celular cadastrando ao mesmo tempo,
+// ou dois usuários em setores diferentes) podiam se sobrepor silenciosamente:
+// appendRow/setValues não são atômicos entre execuções distintas do Apps
+// Script sem lock. Reforço defensivo (mesmo padrão já usado em addPagamento);
+// waitLock(30s): se não conseguir o lock nesse tempo, falha visível em vez
+// de arriscar gravação corrompida.
+function comLockDeEscrita(fn) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    return fn();
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+// Monta a linha pra gravar/atualizar em "clientes" usando os NOMES reais do
+// cabeçalho — mas a coluna de setor precisa de tratamento especial: nesta
+// planilha o cabeçalho real da coluna foi renomeado pra algo tipo "Setor 02"
+// (ver colIdxSetor), enquanto o app sempre manda a chave genérica "setor" no
+// payload. Usar dados[header[i]] direto pra essa coluna sempre lê undefined
+// e grava a célula vazia — CAUSA RAIZ real de EPS18782/EPS18785 e outros 44
+// clientes: a linha era gravada certinha, só a coluna setor ficava em
+// branco, então o cliente nunca aparecia em nenhum filtro por setor (sumia
+// "na prática" mesmo existindo fisicamente na aba). Mesmo tratamento que já
+// existia em criarClienteEm/importarLoteSetores, só que nunca tinha sido
+// aplicado em addCliente/editCliente. linhaExistente: valores atuais da
+// linha, usados como fallback em edição (não apaga um campo que não veio no
+// payload).
+function montarLinhaCliente(header, dados, linhaExistente) {
+  const cSetor = colIdxSetor(header);
+  return header.map((col, idx) => {
+    if (idx === cSetor) {
+      if (dados.setor !== undefined) return dados.setor;
+      return linhaExistente ? linhaExistente[idx] : '';
+    }
+    if (dados[col] !== undefined) return dados[col];
+    return linhaExistente ? linhaExistente[idx] : '';
+  });
+}
+
 function addCliente(dados) {
   if (!dados || !dados.id)   return { ok: false, erro: 'addCliente: id não informado' };
   if (!dados.nome)           return { ok: false, erro: 'addCliente: nome não informado' };
 
-  const sheet  = getOrCreateSheet(SHEET_CLIENTES, COL_CLI);
-  const rows   = sheet.getDataRange().getValues();
-  const header = rows[0];
-  const ids    = rows.slice(1).map(r => String(r[0]));
-  if (ids.includes(String(dados.id))) return editCliente(dados);
+  return comLockDeEscrita(() => {
+    const sheet  = getOrCreateSheet(SHEET_CLIENTES, COL_CLI);
+    const rows   = sheet.getDataRange().getValues();
+    const header = rows[0];
+    const cId    = colIdx(header, 'id');
+    const idCol  = cId >= 0 ? cId : 0;
+    const ids    = rows.slice(1).map(r => String(r[idCol]));
+    if (ids.includes(String(dados.id))) return editClienteImpl(dados, sheet, rows, header);
 
-  // CORRIGIDO: usa cabeçalho real para montar a linha
-  const row = header.map(col => dados[col] !== undefined ? dados[col] : '');
-  sheet.appendRow(row);
-  if (dados.setor) atualizaAbaSetor(dados.setor);
-  return { ok: true };
+    // usa cabeçalho real pra montar a linha, com tratamento especial da coluna setor
+    const row = montarLinhaCliente(header, dados, null);
+    const linhaAntes = sheet.getLastRow();
+    sheet.appendRow(row);
+    SpreadsheetApp.flush(); // força a gravação antes de conferir — evita falso positivo por escrita em lote (mesmo tipo de bug já visto em addPagamento)
+    const linhaDepois = sheet.getLastRow();
+    if (linhaDepois <= linhaAntes) {
+      return { ok: false, erro: 'addCliente: gravação não persistiu (linha não aumentou; antes=' + linhaAntes + ' depois=' + linhaDepois + ')' };
+    }
+    // confere que a linha gravada tem mesmo o id esperado — pega o caso de
+    // uma execução concorrente ter escrito por cima antes do flush
+    const idGravado = String(sheet.getRange(linhaDepois, idCol + 1).getValue());
+    if (idGravado !== String(dados.id)) {
+      return { ok: false, erro: 'addCliente: linha gravada não confere (esperado id=' + dados.id + ', encontrado "' + idGravado + '" na linha ' + linhaDepois + ')' };
+    }
+
+    if (dados.setor) atualizaAbaSetor(dados.setor);
+    return { ok: true };
+  });
 }
 
 function editCliente(dados) {
-  const sheet  = getOrCreateSheet(SHEET_CLIENTES, COL_CLI);
-  const rows   = sheet.getDataRange().getValues();
-  const header = rows[0];
+  return comLockDeEscrita(() => {
+    const sheet  = getOrCreateSheet(SHEET_CLIENTES, COL_CLI);
+    const rows   = sheet.getDataRange().getValues();
+    const header = rows[0];
+    return editClienteImpl(dados, sheet, rows, header);
+  });
+}
+
+// Núcleo de editCliente sem lock próprio — usado tanto por editCliente
+// (adquire o lock) quanto por addCliente quando o id já existe (já está
+// dentro do lock de addCliente; pegar o lock de novo aqui travaria).
+function editClienteImpl(dados, sheet, rows, header) {
+  const cId   = colIdx(header, 'id');
+  const idCol = cId >= 0 ? cId : 0;
   for (let i = 1; i < rows.length; i++) {
-    if (String(rows[i][0]) === String(dados.id)) {
-      // CORRIGIDO: usa ci (índice real na aba) em vez de COL_CLI.indexOf(col)
-      const row = header.map((col, ci) =>
-        dados[col] !== undefined ? dados[col] : rows[i][ci]
-      );
+    if (String(rows[i][idCol]) === String(dados.id)) {
+      const row = montarLinhaCliente(header, dados, rows[i]);
       sheet.getRange(i+1, 1, 1, row.length).setValues([row]);
+      SpreadsheetApp.flush();
       if (dados.setor) atualizaAbaSetor(dados.setor);
       return { ok: true };
     }
@@ -678,12 +748,17 @@ function editCliente(dados) {
 }
 
 function delCliente(id) {
-  const sheet = getOrCreateSheet(SHEET_CLIENTES, COL_CLI);
-  const rows  = sheet.getDataRange().getValues();
-  for (let i = 1; i < rows.length; i++) {
-    if (String(rows[i][0]) === String(id)) { sheet.deleteRow(i+1); return { ok: true }; }
-  }
-  return { ok: false, erro: 'Cliente não encontrado: ' + id };
+  return comLockDeEscrita(() => {
+    const sheet  = getOrCreateSheet(SHEET_CLIENTES, COL_CLI);
+    const rows   = sheet.getDataRange().getValues();
+    const header = rows[0];
+    const cId    = colIdx(header, 'id');
+    const idCol  = cId >= 0 ? cId : 0;
+    for (let i = 1; i < rows.length; i++) {
+      if (String(rows[i][idCol]) === String(id)) { sheet.deleteRow(i+1); return { ok: true }; }
+    }
+    return { ok: false, erro: 'Cliente não encontrado: ' + id };
+  });
 }
 
 // Ação dedicada de remarcação: grava (ou limpa, se dataRemarcacao vier vazio)
@@ -694,20 +769,25 @@ function delCliente(id) {
 function remarcarCliente(dados) {
   if (!dados.id) return { ok: false, erro: 'id não informado' };
 
-  const sheet  = getOrCreateSheet(SHEET_CLIENTES, COL_CLI);
-  const rows   = sheet.getDataRange().getValues();
-  const header = rows[0];
-  const cDataRem = ensureHeaderColumn(sheet, header, 'dataRemarcacao');
+  return comLockDeEscrita(() => {
+    const sheet  = getOrCreateSheet(SHEET_CLIENTES, COL_CLI);
+    const rows   = sheet.getDataRange().getValues();
+    const header = rows[0];
+    const cDataRem = ensureHeaderColumn(sheet, header, 'dataRemarcacao');
+    const cId    = colIdx(header, 'id');
+    const idCol  = cId >= 0 ? cId : 0;
 
-  for (let i = 1; i < rows.length; i++) {
-    if (String(rows[i][0]) === String(dados.id)) {
-      const range = sheet.getRange(i + 1, cDataRem + 1);
-      range.setNumberFormat('@'); // reforça texto puro nesta célula específica
-      range.setValue(dados.dataRemarcacao || '');
-      return { ok: true };
+    for (let i = 1; i < rows.length; i++) {
+      if (String(rows[i][idCol]) === String(dados.id)) {
+        const range = sheet.getRange(i + 1, cDataRem + 1);
+        range.setNumberFormat('@'); // reforça texto puro nesta célula específica
+        range.setValue(dados.dataRemarcacao || '');
+        SpreadsheetApp.flush();
+        return { ok: true };
+      }
     }
-  }
-  return { ok: false, erro: 'Cliente não encontrado: ' + dados.id };
+    return { ok: false, erro: 'Cliente não encontrado: ' + dados.id };
+  });
 }
 
 // ================================================
@@ -728,23 +808,25 @@ function getPagamentos() {
 
 function addPagamento(dados, etapas) {
   etapas = etapas || [];
-  try {
-    const sheet = getOrCreateSheet(SHEET_PAGAMENTOS, COL_PAG);
-    const linhaAntes = sheet.getLastRow();
-    sheet.appendRow(COL_PAG.map(col => dados[col] !== undefined ? dados[col] : ''));
-    SpreadsheetApp.flush(); // força a gravação antes de checar getLastRow, evita falso negativo por escrita em lote
-    const linhaDepois = sheet.getLastRow();
-    const escreveuOk = linhaDepois > linhaAntes;
-    etapas.push('escreveu em PAGAMENTOS: ' + (escreveuOk ? ('sim, linha ' + linhaDepois) : 'NÃO (linha não aumentou! antes=' + linhaAntes + ' depois=' + linhaDepois + ')'));
+  return comLockDeEscrita(() => {
+    try {
+      const sheet = getOrCreateSheet(SHEET_PAGAMENTOS, COL_PAG);
+      const linhaAntes = sheet.getLastRow();
+      sheet.appendRow(COL_PAG.map(col => dados[col] !== undefined ? dados[col] : ''));
+      SpreadsheetApp.flush(); // força a gravação antes de checar getLastRow, evita falso negativo por escrita em lote
+      const linhaDepois = sheet.getLastRow();
+      const escreveuOk = linhaDepois > linhaAntes;
+      etapas.push('escreveu em PAGAMENTOS: ' + (escreveuOk ? ('sim, linha ' + linhaDepois) : 'NÃO (linha não aumentou! antes=' + linhaAntes + ' depois=' + linhaDepois + ')'));
 
-    const okProxVenc = atualizaProxVenc(dados.cid, dados.novoPv, etapas);
-    etapas.push('atualizou proxVenc: ' + (okProxVenc ? 'sim' : 'não'));
+      const okProxVenc = atualizaProxVenc(dados.cid, dados.novoPv, etapas);
+      etapas.push('atualizou proxVenc: ' + (okProxVenc ? 'sim' : 'não'));
 
-    return { ok: true };
-  } catch (e) {
-    etapas.push('EXCEÇÃO dentro de addPagamento: ' + e.toString() + (e.stack ? (' | stack: ' + e.stack) : ''));
-    throw e; // deixa doPost capturar, registrar no DEBUG_LOG e responder erro ao app
-  }
+      return { ok: true };
+    } catch (e) {
+      etapas.push('EXCEÇÃO dentro de addPagamento: ' + e.toString() + (e.stack ? (' | stack: ' + e.stack) : ''));
+      throw e; // deixa doPost capturar, registrar no DEBUG_LOG e responder erro ao app
+    }
+  });
 }
 
 // CORRIGIDO (2x): (1) usa colIdxSetor(header) pra achar a coluna do setor
@@ -836,75 +918,77 @@ function atualizaTodasAbas() {
 // renomeado pra "Setor 02" (ver colIdxSetor) — usar dados[header[i]] direto
 // deixaria a coluna de setor sempre vazia nas linhas novas.
 function importarLoteSetores(payload) {
-  const setoresRemover = (payload.setoresRemover || []).map(s => String(s).trim());
-  const novosClientes  = payload.novosClientes || [];
+  return comLockDeEscrita(() => {
+    const setoresRemover = (payload.setoresRemover || []).map(s => String(s).trim());
+    const novosClientes  = payload.novosClientes || [];
 
-  const sheetCli = getOrCreateSheet(SHEET_CLIENTES, COL_CLI);
-  const sheetPag = getOrCreateSheet(SHEET_PAGAMENTOS, COL_PAG);
+    const sheetCli = getOrCreateSheet(SHEET_CLIENTES, COL_CLI);
+    const sheetPag = getOrCreateSheet(SHEET_PAGAMENTOS, COL_PAG);
 
-  const rowsCli    = sheetCli.getDataRange().getValues();
-  const headerCli  = rowsCli[0];
-  const cSetorCli  = colIdxSetor(headerCli);
-  const cIdCli     = colIdx(headerCli, 'id');
-  if (cSetorCli === -1) return { ok: false, erro: 'Coluna setor não encontrada em clientes' };
-  if (cIdCli === -1)    return { ok: false, erro: 'Coluna id não encontrada em clientes' };
+    const rowsCli    = sheetCli.getDataRange().getValues();
+    const headerCli  = rowsCli[0];
+    const cSetorCli  = colIdxSetor(headerCli);
+    const cIdCli     = colIdx(headerCli, 'id');
+    if (cSetorCli === -1) return { ok: false, erro: 'Coluna setor não encontrada em clientes' };
+    if (cIdCli === -1)    return { ok: false, erro: 'Coluna id não encontrada em clientes' };
 
-  const idxRemoverCli = []; // índices 0-based dentro de rowsCli (linha real = idx+1)
-  const idsRemovidos  = {};
-  for (let i = 1; i < rowsCli.length; i++) {
-    if (setoresRemover.indexOf(String(rowsCli[i][cSetorCli]).trim()) !== -1) {
-      idxRemoverCli.push(i);
-      idsRemovidos[String(rowsCli[i][cIdCli])] = true;
+    const idxRemoverCli = []; // índices 0-based dentro de rowsCli (linha real = idx+1)
+    const idsRemovidos  = {};
+    for (let i = 1; i < rowsCli.length; i++) {
+      if (setoresRemover.indexOf(String(rowsCli[i][cSetorCli]).trim()) !== -1) {
+        idxRemoverCli.push(i);
+        idsRemovidos[String(rowsCli[i][cIdCli])] = true;
+      }
     }
-  }
 
-  const rowsPag   = sheetPag.getDataRange().getValues();
-  const headerPag = rowsPag[0];
-  const cCidPag   = colIdx(headerPag, 'cid');
-  const idxRemoverPag = [];
-  if (cCidPag !== -1) {
-    for (let i = 1; i < rowsPag.length; i++) {
-      if (idsRemovidos[String(rowsPag[i][cCidPag])]) idxRemoverPag.push(i);
+    const rowsPag   = sheetPag.getDataRange().getValues();
+    const headerPag = rowsPag[0];
+    const cCidPag   = colIdx(headerPag, 'cid');
+    const idxRemoverPag = [];
+    if (cCidPag !== -1) {
+      for (let i = 1; i < rowsPag.length; i++) {
+        if (idsRemovidos[String(rowsPag[i][cCidPag])]) idxRemoverPag.push(i);
+      }
     }
-  }
 
-  if (payload.confirm !== true) {
+    if (payload.confirm !== true) {
+      return {
+        ok: true,
+        dryRun: true,
+        clientesParaRemover: idxRemoverCli.length,
+        pagamentosParaRemover: idxRemoverPag.length,
+        clientesParaInserir: novosClientes.length,
+      };
+    }
+
+    // remove de baixo pra cima pra não bagunçar os índices das linhas seguintes
+    for (let k = idxRemoverPag.length - 1; k >= 0; k--) sheetPag.deleteRow(idxRemoverPag[k] + 1);
+    for (let k = idxRemoverCli.length - 1; k >= 0; k--) sheetCli.deleteRow(idxRemoverCli[k] + 1);
+    SpreadsheetApp.flush();
+
+    const headerAtual = sheetCli.getRange(1, 1, 1, sheetCli.getLastColumn()).getValues()[0];
+    const cSetorAtual = colIdxSetor(headerAtual);
+    const matriz = novosClientes.map(obj => headerAtual.map((h, idx) => {
+      if (idx === cSetorAtual) return obj.setor !== undefined ? obj.setor : '';
+      return obj[h] !== undefined ? obj[h] : '';
+    }));
+    if (matriz.length) {
+      sheetCli.getRange(sheetCli.getLastRow() + 1, 1, matriz.length, headerAtual.length).setValues(matriz);
+    }
+
+    const setoresAtualizar = {};
+    setoresRemover.forEach(s => setoresAtualizar[s] = true);
+    novosClientes.forEach(o => { if (o.setor) setoresAtualizar[String(o.setor).trim()] = true; });
+    Object.keys(setoresAtualizar).forEach(s => atualizaAbaSetor(s));
+
     return {
       ok: true,
-      dryRun: true,
-      clientesParaRemover: idxRemoverCli.length,
-      pagamentosParaRemover: idxRemoverPag.length,
-      clientesParaInserir: novosClientes.length,
+      executado: true,
+      clientesRemovidos: idxRemoverCli.length,
+      pagamentosRemovidos: idxRemoverPag.length,
+      clientesInseridos: matriz.length,
     };
-  }
-
-  // remove de baixo pra cima pra não bagunçar os índices das linhas seguintes
-  for (let k = idxRemoverPag.length - 1; k >= 0; k--) sheetPag.deleteRow(idxRemoverPag[k] + 1);
-  for (let k = idxRemoverCli.length - 1; k >= 0; k--) sheetCli.deleteRow(idxRemoverCli[k] + 1);
-  SpreadsheetApp.flush();
-
-  const headerAtual = sheetCli.getRange(1, 1, 1, sheetCli.getLastColumn()).getValues()[0];
-  const cSetorAtual = colIdxSetor(headerAtual);
-  const matriz = novosClientes.map(obj => headerAtual.map((h, idx) => {
-    if (idx === cSetorAtual) return obj.setor !== undefined ? obj.setor : '';
-    return obj[h] !== undefined ? obj[h] : '';
-  }));
-  if (matriz.length) {
-    sheetCli.getRange(sheetCli.getLastRow() + 1, 1, matriz.length, headerAtual.length).setValues(matriz);
-  }
-
-  const setoresAtualizar = {};
-  setoresRemover.forEach(s => setoresAtualizar[s] = true);
-  novosClientes.forEach(o => { if (o.setor) setoresAtualizar[String(o.setor).trim()] = true; });
-  Object.keys(setoresAtualizar).forEach(s => atualizaAbaSetor(s));
-
-  return {
-    ok: true,
-    executado: true,
-    clientesRemovidos: idxRemoverCli.length,
-    pagamentosRemovidos: idxRemoverPag.length,
-    clientesInseridos: matriz.length,
-  };
+  });
 }
 
 // ================================================
@@ -1504,6 +1588,117 @@ function TESTE_compararIds() {
   Logger.log('Com match (com .trim() nos dois lados): ' + comMatchTrim);
   Logger.log('--- 10 exemplos de id sem match (mesmo com trim) ---');
   exemplosSemMatch.forEach(id => Logger.log('"' + id + '"'));
+}
+
+// ================================================
+// REPARAR SETOR VAZIO (bug de addCliente/editCliente gravando dados[header[i]]
+// direto na coluna renomeada "Setor 02" — ver montarLinhaCliente)
+// ================================================
+// Backfill único pros clientes já afetados pelo bug antes da correção: a
+// linha existe na aba "clientes" com todos os campos certos, só a coluna de
+// setor ficou em branco, então o cliente nunca aparece em nenhum filtro por
+// setor (fica "invisível" mesmo existindo). O valor certo de cada um foi
+// recuperado batendo o id contra a aba DEBUG_LOG (payload original do
+// cadastro) e, quando não achado ali, contra o histórico de PAGAMENTOS
+// (coluna setor) — nunca inventado. Ids sem nenhum registro recuperável não
+// entram no mapa: ficam de fora e precisam ser ajustados manualmente.
+// Sem confirmação prévia. Só grava onde a célula de setor está REALMENTE
+// vazia (não sobrescreve nada que já tenha um valor).
+function repararSetorVazio() {
+  const SETOR_CONHECIDO = {
+    'EPS18764': 'Setor 02', 'EPS18765': 'Setor 02', 'EPS18769': 'Setor 13',
+    'EPS18770': 'Setor 02', 'EPS18771': 'Setor 02', 'EPS18772': 'Setor 13',
+    'EPS18773': 'Setor 02', 'EPS18774': 'Setor 13', 'EPS18775': 'Setor 13',
+    'EPS18776': 'Setor 02', 'EPS18777': 'Setor 02', 'EPS18778': 'Setor 02',
+    'EPS18779': 'Setor 02', 'EPS18780': 'Setor 04', 'EPS18781': 'Setor 04',
+    'EPS18782': 'Setor 03', 'EPS18783': 'Setor 03', 'EPS18784': 'Setor 03',
+    'EPS18785': 'Setor 04', 'EPS18786': 'Setor 04', 'EPS18787': 'Setor 04',
+    'EPS18788': 'Setor 04', 'EPS18789': 'Setor 04',
+  };
+
+  return comLockDeEscrita(() => {
+    const sheet  = getOrCreateSheet(SHEET_CLIENTES, COL_CLI);
+    const rows   = sheet.getDataRange().getValues();
+    const header = rows[0];
+    const cId    = colIdx(header, 'id');
+    const cSetor = colIdxSetor(header);
+    if (cId === -1 || cSetor === -1) return { ok: false, erro: 'Coluna id ou setor não encontrada' };
+
+    const corrigidos = [];
+    const setoresTocados = {};
+    for (let i = 1; i < rows.length; i++) {
+      const id = String(rows[i][cId] || '').trim();
+      const setorAtual = String(rows[i][cSetor] || '').trim();
+      if (setorAtual !== '' || !SETOR_CONHECIDO[id]) continue;
+      const novoSetor = SETOR_CONHECIDO[id];
+      sheet.getRange(i + 1, cSetor + 1).setValue(novoSetor);
+      corrigidos.push(id + ' → ' + novoSetor);
+      setoresTocados[novoSetor] = true;
+    }
+    SpreadsheetApp.flush();
+    Object.keys(setoresTocados).forEach(s => atualizaAbaSetor(s));
+
+    return { ok: true, corrigidos: corrigidos, total: corrigidos.length };
+  });
+}
+
+// ================================================
+// TESTE AUTOMATIZADO: cadastro de cliente nos 4 setores afetados
+// ================================================
+// Simula addCliente em cada um dos setores 02/03/04/13, e confirma por
+// LEITURA DIRETA da planilha (não confia só no retorno {ok:true}) que a
+// linha foi gravada com id, nome E setor corretos. Usa ids com prefixo
+// TESTE_AUTO_ pra nunca colidir com id real, e remove os clientes de teste
+// no final (sucesso ou falha) pra não sujar a aba "clientes" de produção.
+function testeCadastroSetores() {
+  const setores = ['Setor 02', 'Setor 03', 'Setor 04', 'Setor 13'];
+  const stamp = new Date().getTime();
+  const resultados = [];
+  const idsCriados = [];
+
+  try {
+    setores.forEach(setor => {
+      const id = 'TESTE_AUTO_' + stamp + '_' + setor.replace(/\s+/g, '');
+      const dados = {
+        id: id,
+        nome: 'Teste Automático ' + setor,
+        setor: setor,
+        vencDia: 5,
+        valor: 1,
+        criadoPor: 'teste-automatizado',
+        criadoEm: new Date().toISOString(),
+      };
+
+      const respAdd = addCliente(dados);
+      idsCriados.push(id);
+
+      // lê de volta diretamente da planilha (não reaproveita cache nenhum)
+      const sheet  = getOrCreateSheet(SHEET_CLIENTES, COL_CLI);
+      const rows   = sheet.getDataRange().getValues();
+      const header = rows[0];
+      const cId    = colIdx(header, 'id');
+      const cSetor = colIdxSetor(header);
+      const linha  = rows.find(r => String(r[cId]) === id);
+
+      const setorGravado = linha ? String(linha[cSetor] || '').trim() : null;
+      const passou = !!respAdd.ok && !!linha && setorGravado === setor;
+
+      resultados.push({
+        setor: setor,
+        id: id,
+        respostaAddCliente: respAdd,
+        linhaEncontrada: !!linha,
+        setorGravado: setorGravado,
+        passou: passou,
+      });
+    });
+  } finally {
+    // limpeza: remove todos os clientes de teste criados, mesmo se algum passo falhou
+    idsCriados.forEach(id => { try { delCliente(id); } catch (e) {} });
+  }
+
+  const todosPassaram = resultados.every(r => r.passou);
+  return { ok: true, todosPassaram: todosPassaram, resultados: resultados };
 }
 
 // ================================================
