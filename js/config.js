@@ -539,8 +539,21 @@ async function syncAll() {
       const norm = normalizarCliente(c);
       const local = localById[chaveCli(norm)];
       if (local) {
-        // Preserva proxVenc local se estiver mais adiantado (pagamento recente ainda não refletido no Sheets)
-        if (local.proxVenc > norm.proxVenc) norm.proxVenc = local.proxVenc;
+        // CORRIGIDO: não preserva mais proxVenc local "mais adiantado" — essa
+        // regra existia pra cobrir o período em que addPagamento não gravava
+        // proxVenc no Sheets de forma confiável, mas também é exatamente o
+        // que fazia outros aparelhos continuarem mostrando um cliente como
+        // atrasado depois de uma baixa feita em OUTRO aparelho: o cache local
+        // (antigo) nunca perdia pra um valor do servidor mais alto porque a
+        // comparação olhava só a magnitude, não se o local realmente era mais
+        // recente. Servidor grava proxVenc de forma síncrona e confiável
+        // (LockService + verificação pós-gravação em addPagamento/addCliente),
+        // então agora ele é sempre a fonte de verdade pra proxVenc — sem essa
+        // regra. O próprio aparelho que acabou de pagar já atualiza proxVenc
+        // localmente de forma otimista (ver confirmarPag) e fica blindado de
+        // sync por alguns segundos (bloqSync) até o servidor confirmar, então
+        // não corre risco de "regredir" visualmente enquanto isso.
+
         // Apps Script bug: addPagamento às vezes corrompe colunas do cliente
         // (ex: grava valor_mensalidade em vencDia e zera valor)
         // → preserva dados locais válidos quando o Sheets retorna dados inválidos
@@ -941,4 +954,24 @@ window.addEventListener('load', () => {
       }
     });
   }
+
+  // ── Re-sync automático ao reabrir/focar o app ────────────────────────────
+  // Antes disso, syncAll() só rodava no login e num F5 completo — um app
+  // deixado aberto em outro aparelho (celular saindo de segundo plano, troca
+  // de aba) nunca buscava dado novo sozinho, então uma baixa feita em outro
+  // aparelho só aparecia depois de recarregar a página (ou, na prática, só
+  // depois de limpar o cache do navegador, que força esse reload). Guard de
+  // 10s evita sync duplicado quando visibilitychange e focus disparam juntos.
+  let _ultimoAutoSync = 0;
+  function resyncSeVisivel() {
+    if (!USER || document.hidden) return;
+    if (Date.now() - _ultimoAutoSync < 10000) return;
+    _ultimoAutoSync = Date.now();
+    syncAll();
+  }
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) resyncSeVisivel(); });
+  window.addEventListener('focus', resyncSeVisivel);
+  // Baseline pra quem deixa o app aberto e em primeiro plano por muito tempo
+  // sem nunca trocar de aba/aparelho (ex: painel fixo no PC do escritório)
+  setInterval(resyncSeVisivel, 180000); // 3 minutos
 });

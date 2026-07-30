@@ -453,12 +453,16 @@ async function confirmarPag() {
   pagLocal.push(pag);
   localStorage.setItem('eps_pag', JSON.stringify(pagLocal));
 
-  // Bloqueia sync por 5min para não sobrescrever dados recém-salvos
+  // Bloqueia sync por 15s para não sobrescrever dados recém-salvos com uma
+  // resposta do Sheets que ainda não refletiu esta gravação (corrigido: era
+  // 300000ms/5min por engano — 5min de bloqueio fazia este aparelho ignorar
+  // TODAS as mudanças de outros usuários/aparelhos por 5 minutos após cada
+  // pagamento, não só a deste cliente específico).
   // Persiste no sessionStorage para sobreviver a page reload (iOS retorna do WhatsApp recarregando a página)
   bloqSync = true;
-  const _bloqExp = Date.now() + 300000; // 5 minutos
+  const _bloqExp = Date.now() + 15000; // 15 segundos
   sessionStorage.setItem('bloqSync_exp', _bloqExp.toString());
-  setTimeout(() => { bloqSync = false; sessionStorage.removeItem('bloqSync_exp'); }, 300000);
+  setTimeout(() => { bloqSync = false; sessionStorage.removeItem('bloqSync_exp'); }, 15000);
 
   // Fecha modal e atualiza lista na hora
   if (btn) { btn.disabled = false; btn.textContent = '✅ Confirmar Pagamento'; }
