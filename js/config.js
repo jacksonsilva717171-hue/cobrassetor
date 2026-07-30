@@ -575,13 +575,30 @@ async function syncAll() {
       return norm;
     });
 
-    // Reintegra clientes que existem só localmente (cadastro/edição feito
-    // neste dispositivo mas ainda não refletido no Sheets) — sem isso, um
-    // cadastro cuja gravação no Apps Script falhar/atrasar some da lista
-    // assim que este sync roda.
+    // Reintegra clientes que existem só localmente (cadastro feito neste
+    // dispositivo mas ainda não refletido no Sheets) — sem isso, um cadastro
+    // cuja gravação no Apps Script falhar/atrasar some da lista assim que
+    // este sync roda.
+    // CORRIGIDO: sem limite de tempo, isso reintegrava pra sempre qualquer
+    // cliente já visto localmente algum dia — inclusive um EXCLUÍDO por
+    // outro aparelho, porque não tem como distinguir "ainda não sincronizou"
+    // de "sumiu do servidor porque foi excluído" só pela ausência na
+    // resposta. E como o resultado do merge é salvo de volta no
+    // localStorage, o fantasma se realimentava a cada sync, sobrevivendo
+    // até um "limpar cache" manual — mesmo depois de sincronizar de novo.
+    // Limita a reintegração a cadastros bem recentes (48h): tempo de sobra
+    // pra um cadastro offline/lento sincronizar de verdade, mas qualquer
+    // coisa mais velha que isso e ausente do servidor é tratada como
+    // exclusão legítima, não como pendência.
+    const JANELA_RECADASTRO_MS = 48 * 60 * 60 * 1000;
+    const agora = Date.now();
     const mergedKeys = new Set(merged.map(chaveCli));
     const somenteLocais = Object.values(localById)
-      .filter(c => c.id && !mergedKeys.has(chaveCli(c)))
+      .filter(c => {
+        if (!c.id || mergedKeys.has(chaveCli(c))) return false;
+        const criadoEm = c.criadoEm ? new Date(c.criadoEm).getTime() : 0;
+        return criadoEm && (agora - criadoEm) < JANELA_RECADASTRO_MS;
+      })
       .map(c => normalizarCliente(c));
 
     return merged.concat(somenteLocais);
