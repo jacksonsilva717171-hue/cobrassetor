@@ -59,6 +59,18 @@ const USUARIOS_PADRAO = [
     valorMensal: 300,
     bloqueado:  false,
   },
+  {
+    usuario:    'widja',
+    senha:      'wid2026',
+    role:       'proprietario',
+    nome:       'Widja',
+    tel:        '43 99104-0923',
+    chavePix:   '',
+    logoUrl:    '',
+    setores:    ['Setor 20'], // Setor 20 = Vila Casoni (só descrição do local; não há campo de apelido no modelo)
+    valorMensal: 100,
+    bloqueado:  false,
+  },
 ];
 
 // Mescla padrão + extras salvos no localStorage
