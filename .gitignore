@@ -17,3 +17,6 @@ desktop.ini
 # Arquivos antigos / backup
 eps-sheets-1 (2).html
 CobraSetor_PRD_ClaudeCode.md
+
+# Listas de clientes (planilhas com dados pessoais) — nunca vão para o GitHub público
+*.xlsx
