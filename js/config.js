@@ -71,6 +71,18 @@ const USUARIOS_PADRAO = [
     valorMensal: 100,
     bloqueado:  false,
   },
+  {
+    usuario:    'carlinhos',
+    senha:      'edcarlos2026',
+    role:       'proprietario',
+    nome:       'Carlinhos',
+    tel:        '47 99767-7495',
+    chavePix:   '',
+    logoUrl:    '',
+    setores:    ['Setor 09'], // Setor 09 = Figueira (só descrição do local; não há campo de apelido no modelo)
+    valorMensal: 70,
+    bloqueado:  false,
+  },
 ];
 
 // Mescla padrão + extras salvos no localStorage
