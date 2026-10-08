@@ -7,27 +7,153 @@ const ELITE_LOGO = 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAYEB
 
 let _reciboAtual = null;
 
-// ── Helpers ─────────────────────────────────────────────
+// ── Identidade do recibo por proprietário ───────────────
+// A identidade é sempre a do DONO do setor do cliente (não de quem está
+// logado — o admin gerando o recibo sai igual ao do proprietário).
+// Campos: empresa, sub (opcional), tel, cnpj (opcional), pix + titular
+// (opcionais), logo (opcional), msg (opcional) e cores do cabeçalho
+// (fundo, linha, titulo). Sem fallback para o EPS: só aparece o que o
+// proprietário tem cadastrado.
+//
+// Campos só para manter Preto/Vinicius idênticos ao layout antigo:
+//   classe   — usa o CSS pronto do index.html (.header-eps / .header-elite)
+//   alt      — texto alternativo do logo na tela
+//   destaque — palavra inicial da empresa pintada com a cor da linha
+//   zapSub / zapTel — subtítulo/telefone diferentes no texto do WhatsApp
+const RECIBO_IDENTIDADES = {
+  preto: {
+    empresa: 'GRUPO EPS',
+    sub:     'Vigilância Particular · Ronda Noturna',
+    tel:     '(47) 99235-6129 · 99906-8487',
+    logo:    EPS_LOGO,
+    cores:   { fundo: '#111827', linha: '#f0c040', titulo: '#f0c040' },
+    classe:  'header-eps',
+    alt:     'Grupo EPS',
+    zapSub:  'Vigilância Patrimonial',
+    zapTel:  '(47) 99235-6129',
+  },
+  elite2022: {
+    empresa:  'ELITE SEGURANÇA',
+    sub:      'Sistemas de Segurança',
+    tel:      '(47) 99944-7354',
+    cnpj:     '38.165.898/0001-20',
+    logo:     ELITE_LOGO,
+    cores:    { fundo: '#0d0d0d', linha: '#c0392b', titulo: '#fff' },
+    classe:   'header-elite',
+    alt:      'Elite Segurança',
+    destaque: 'ELITE',
+  },
+  widja: {
+    empresa: 'DIRECT SEG',
+    tel:     '43 99104-0923',
+    pix:     '43991040923',
+    titular: 'Widja Liberato dos Santos',
+    logo:    'img/logo-directseg.png',
+    msg:     'Aquele que habita no esconderijo do Altíssimo, à sombra do Onipotente descansará. — Salmo 91',
+    cores:   { fundo: '#000000', linha: '#e53935', titulo: '#ffffff' },
+  },
+  // Provisória — até o Carlinhos mandar logo/Pix
+  carlinhos: {
+    empresa: 'Carlinhos',
+    tel:     '47 99767-7495',
+    cores:   { fundo: '#1a1a1a', linha: '#ff6b00', titulo: '#ffffff' },
+  },
+};
 
-/** Determina empresa pelo setor */
+const _CORES_PADRAO = { fundo: '#1a1a1a', linha: '#ff6b00', titulo: '#ffffff' };
+
+function _numSetor(setor) {
+  const m = String(setor || '').match(/\d+/);
+  return m ? parseInt(m[0]) : NaN;
+}
+
+/** Proprietário dono do setor (USUARIOS atual; se não achar, a seed) */
+function _donoDoSetor(setor) {
+  const n = _numSetor(setor);
+  if (isNaN(n)) return null;
+  const temSetor = u => u.role === 'proprietario' &&
+    (Array.isArray(u.setores) ? u.setores : [u.setores]).some(s => _numSetor(s) === n);
+  return (typeof USUARIOS !== 'undefined' && USUARIOS.find(temSetor)) ||
+         USUARIOS_PADRAO.find(temSetor) || null;
+}
+
+/** Identidade do recibo pelo setor do cliente */
 function _getEmpresa(setor) {
-  const m = (setor || '').match(/\d+/);
-  const n = m ? parseInt(m[0]) : 0;
-  if (n === 2 || n === 13) {
-    return { nome: 'GRUPO EPS', sub: 'Vigilância Patrimonial', cor: '#f0c040', isEPS: true };
+  const dono = _donoDoSetor(setor);
+  if (!dono) {
+    // Setor sem proprietário: recibo neutro, sem dados de nenhuma empresa
+    return { nome: 'CobraSetor', cores: { ..._CORES_PADRAO } };
   }
-  if (n >= 3 && n <= 8) {
-    return { nome: 'ELITE SEGURANÇA', sub: 'Sistemas de Segurança', cor: '#c0392b', isEPS: false };
-  }
-  // fallback pelo usuário logado
-  if ((USER?.nome || '').toLowerCase().includes('vinicius')) {
-    return { nome: 'ELITE SEGURANÇA', sub: 'Sistemas de Segurança', cor: '#c0392b', isEPS: false };
-  }
-  return { nome: 'GRUPO EPS', sub: 'Vigilância Patrimonial', cor: '#f0c040', isEPS: true };
+  // Base: o que o proprietário já tem no cadastro; por cima, a identidade
+  // fixa (RECIBO_IDENTIDADES) e por fim um objeto `recibo` no próprio usuário.
+  const id = {
+    empresa: dono.nome,
+    tel:     dono.tel,
+    pix:     dono.chavePix,
+    logo:    dono.logoUrl,
+    ...(RECIBO_IDENTIDADES[dono.usuario] || {}),
+    ...(dono.recibo || {}),
+  };
+  return {
+    ...id,
+    nome:  id.empresa || dono.nome,
+    cores: { ..._CORES_PADRAO, ...(id.cores || {}) },
+  };
 }
 
 function _formaLabelRecibo(forma) {
   return { dinheiro: 'Dinheiro', cartao: 'Cartão', pix_presencial: 'PIX Presencial', pix_auto: 'PIX Automático' }[forma] || (forma || '—');
+}
+
+/** Nome da empresa com a palavra de destaque pintada (ex.: <span>ELITE</span> SEGURANÇA) */
+function _empresaHtml(emp, spanStyle) {
+  const d = emp.destaque;
+  if (d && emp.nome.startsWith(d)) {
+    return '<span' + (spanStyle ? ' style="' + spanStyle + '"' : '') + '>' + d + '</span>' + emp.nome.slice(d.length);
+  }
+  return emp.nome;
+}
+
+/** Bloco opcional de Pix / titular / mensagem (vazio se o dono não tem) */
+function _extrasHtml(emp) {
+  if (!emp.pix && !emp.msg) return '';
+  const cor = emp.cores.linha;
+  let h = '<div style="padding:10px 20px;background:#fafaf7;border-top:1px dashed #ddd;text-align:center;font-family:Arial,sans-serif;">';
+  if (emp.pix) {
+    h += '<div style="font-size:12px;color:#1c1c1c;">🔑 Pix: <strong>' + emp.pix + '</strong></div>';
+    if (emp.titular) h += '<div style="font-size:11px;color:#666;margin-top:2px;">Titular: ' + emp.titular + '</div>';
+  }
+  if (emp.msg) {
+    h += '<div style="font-size:11px;font-style:italic;color:#555;margin-top:' + (emp.pix ? '8px' : '0') + ';border-left:3px solid ' + cor + ';padding:2px 0 2px 8px;text-align:left;">' + emp.msg + '</div>';
+  }
+  return h + '</div>';
+}
+
+function _headerHtml(emp) {
+  const L = [];
+  if (emp.classe) {
+    L.push('<div class="' + emp.classe + '">');
+  } else {
+    L.push('<div style="background:' + emp.cores.fundo + ';padding:18px 20px;display:flex;align-items:center;gap:14px;border-bottom:4px solid ' + emp.cores.linha + ';">');
+  }
+  const imgStyle = emp.classe ? '' : ' style="width:68px;height:68px;object-fit:contain;border-radius:4px;flex-shrink:0;"';
+  if (emp.logo) L.push('        <img src="' + emp.logo + '" alt="' + (emp.alt || emp.nome) + '"' + imgStyle + '>');
+  if (emp.classe) {
+    L.push('        <div class="rec-info">');
+    L.push('          <div class="rec-empresa">' + _empresaHtml(emp) + '</div>');
+    if (emp.sub)  L.push('          <div class="rec-sub">' + emp.sub + '</div>');
+    if (emp.tel)  L.push('          <div class="rec-tel">📞 ' + emp.tel + '</div>');
+    if (emp.cnpj) L.push('          <div class="rec-cnpj">CNPJ: ' + emp.cnpj + '</div>');
+  } else {
+    L.push('        <div class="rec-info" style="color:#fff;">');
+    L.push('          <div style="font-family:\'Oswald\',\'Rajdhani\',sans-serif;font-size:20px;font-weight:700;letter-spacing:1px;color:' + emp.cores.titulo + ';">' + _empresaHtml(emp, 'color:' + emp.cores.linha + ';') + '</div>');
+    if (emp.sub)  L.push('          <div style="font-size:11px;color:#aaa;margin-top:2px;">' + emp.sub + '</div>');
+    if (emp.tel)  L.push('          <div style="font-size:12px;color:#ccc;margin-top:5px;">📞 ' + emp.tel + '</div>');
+    if (emp.cnpj) L.push('          <div style="font-size:10px;color:#777;margin-top:2px;">CNPJ: ' + emp.cnpj + '</div>');
+  }
+  L.push('        </div>');
+  L.push('      </div>');
+  return L.join('\n');
 }
 
 // ── HTML do recibo ────────────────────────────────────────
@@ -45,26 +171,7 @@ function _buildReciboHTML(c, pag) {
   const s    = String(pag.mesPago || '000000');
   const venc = (String(c.vencDia || 1).padStart(2, '0')) + '/' + s.slice(4, 6) + '/' + s.slice(0, 4);
 
-  const logo = empresa.isEPS ? EPS_LOGO : ELITE_LOGO;
-
-  const headerHtml = empresa.isEPS
-    ? `<div class="header-eps">
-        <img src="${logo}" alt="Grupo EPS">
-        <div class="rec-info">
-          <div class="rec-empresa">GRUPO EPS</div>
-          <div class="rec-sub">Vigilância Particular · Ronda Noturna</div>
-          <div class="rec-tel">📞 (47) 99235-6129 · 99906-8487</div>
-        </div>
-      </div>`
-    : `<div class="header-elite">
-        <img src="${logo}" alt="Elite Segurança">
-        <div class="rec-info">
-          <div class="rec-empresa"><span>ELITE</span> SEGURANÇA</div>
-          <div class="rec-sub">Sistemas de Segurança</div>
-          <div class="rec-tel">📞 (47) 99944-7354</div>
-          <div class="rec-cnpj">CNPJ: 38.165.898/0001-20</div>
-        </div>
-      </div>`;
+  const headerHtml = _headerHtml(empresa);
 
   return `
     ${headerHtml}
@@ -86,7 +193,7 @@ function _buildReciboHTML(c, pag) {
       <div class="rec-campo"><span class="rec-lbl">Data do Pagamento</span><span class="rec-val">${dataPag}</span></div>
       <div class="rec-campo"><span class="rec-lbl">Cobrador</span><span class="rec-val">${pag.vigia}</span></div>
       ${pag.obs ? `<div class="rec-campo"><span class="rec-lbl">Obs</span><span class="rec-val">${pag.obs}</span></div>` : ''}
-    </div>
+    </div>${_extrasHtml(empresa)}
     <div class="rec-rodape">
       <div class="rec-stamp">PAGO</div>
       <p>Gerado por <strong>CobraSetor</strong> · Pagamento confirmado ✅</p>
@@ -139,9 +246,14 @@ function enviarWhatsAppRecibo() {
   const ym       = String(pag.mesPago || '');
   const idHash   = (c.id || '').replace(/\D/g, '').slice(-4).padStart(4, '0');
   const numRecibo = ym + idHash;
-  const telefone = empresa.isEPS ? '(47) 99235-6129' : '(47) 99944-7354';
+  const sub      = empresa.zapSub || empresa.sub;
+  const telefone = empresa.zapTel || empresa.tel;
+  const pixTxt   = empresa.pix
+    ? '🔑 *Pix:* ' + empresa.pix + '\n' + (empresa.titular ? '👤 *Titular:* ' + empresa.titular + '\n' : '')
+    : '';
+  const msgTxt   = empresa.msg ? '\n\n_' + empresa.msg + '_' : '';
 
-  const msg = '✅ *RECIBO DE PAGAMENTO*\n━━━━━━━━━━━━━━━━━━━\n🏢 *' + empresa.nome + '*\n_' + empresa.sub + '_\n📞 ' + telefone + '\n\n👤 *Cliente:* ' + c.nome + '\n🆔 *ID:* ' + c.id + '\n📍 *Setor:* ' + c.setor + '\n\n📅 *Referência:* ' + mesRef + '\n📆 *Vencimento:* ' + venc + '\n💰 *Valor Pago:* ' + fR(pag.valor) + '\n💳 *Forma:* ' + formaLb + '\n🗓️ *Data:* ' + dataPag + '\n🔢 *Recibo Nº:* ' + numRecibo + '\n━━━━━━━━━━━━━━━━━━━\n✅ _Pagamento confirmado!_\n_Gerado por CobraSetor_';
+  const msg = '✅ *RECIBO DE PAGAMENTO*\n━━━━━━━━━━━━━━━━━━━\n🏢 *' + empresa.nome + '*\n' + (sub ? '_' + sub + '_\n' : '') + (telefone ? '📞 ' + telefone + '\n' : '') + '\n👤 *Cliente:* ' + c.nome + '\n🆔 *ID:* ' + c.id + '\n📍 *Setor:* ' + c.setor + '\n\n📅 *Referência:* ' + mesRef + '\n📆 *Vencimento:* ' + venc + '\n💰 *Valor Pago:* ' + fR(pag.valor) + '\n💳 *Forma:* ' + formaLb + '\n🗓️ *Data:* ' + dataPag + '\n🔢 *Recibo Nº:* ' + numRecibo + '\n' + (pixTxt ? '\n' + pixTxt : '') + '━━━━━━━━━━━━━━━━━━━\n✅ _Pagamento confirmado!_\n_Gerado por CobraSetor_' + msgTxt;
 
   window.open('https://wa.me/55' + tel + '?text=' + encodeURIComponent(msg), '_blank');
 }
@@ -203,16 +315,19 @@ function _printRecibo(c, pag) {
   const ym      = String(pag.mesPago || '');
   const idHash  = (c.id || '').replace(/\D/g, '').slice(-4).padStart(4, '0');
   const numRecibo = ym + idHash;
-  const logo    = empresa.isEPS ? EPS_LOGO : ELITE_LOGO;
-  const cor     = empresa.isEPS ? '#f0c040' : '#c0392b';
-  const bgHdr   = empresa.isEPS ? '#111827' : '#0d0d0d';
-  const infoHtml = empresa.isEPS
-    ? '<div class="rec-empresa">GRUPO EPS</div><div class="rec-sub">Vigilância Particular · Ronda Noturna</div><div class="rec-tel">📞 (47) 99235-6129 · 99906-8487</div>'
-    : '<div class="rec-empresa" style="color:#fff;"><span style="color:#c0392b;">ELITE</span> SEGURANÇA</div><div class="rec-sub">Sistemas de Segurança</div><div class="rec-tel">📞 (47) 99944-7354</div><div class="rec-cnpj">CNPJ: 38.165.898/0001-20</div>';
+  // A janela de impressão é about:blank — logo com caminho relativo precisa virar URL absoluta
+  const logo    = empresa.logo && !/^data:/.test(empresa.logo) ? new URL(empresa.logo, location.href).href : empresa.logo;
+  const cor     = empresa.cores.linha;
+  const bgHdr   = empresa.cores.fundo;
+  const corTit  = empresa.cores.titulo;
+  const infoHtml = '<div class="rec-empresa"' + (corTit !== cor ? ' style="color:' + corTit + ';"' : '') + '>' + _empresaHtml(empresa, corTit !== cor ? 'color:' + cor + ';' : '') + '</div>'
+    + (empresa.sub  ? '<div class="rec-sub">' + empresa.sub + '</div>' : '')
+    + (empresa.tel  ? '<div class="rec-tel">📞 ' + empresa.tel + '</div>' : '')
+    + (empresa.cnpj ? '<div class="rec-cnpj">CNPJ: ' + empresa.cnpj + '</div>' : '');
   const obsHtml = pag.obs ? '<div class="rc"><span class="rl">Obs</span><span class="rv">' + pag.obs + '</span></div>' : '';
 
   const html = '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Recibo — ' + c.nome + '</title><link href="https://fonts.googleapis.com/css2?family=Oswald:wght@600;700&display=swap" rel="stylesheet"><style>body{font-family:Arial,sans-serif;max-width:480px;margin:0 auto;background:#fafaf7;font-size:13px;color:#111;}.hdr{background:' + bgHdr + ';padding:16px 20px;display:flex;align-items:center;gap:14px;border-bottom:4px solid ' + cor + ';}.hdr img{width:64px;height:64px;object-fit:contain;border-radius:4px;}.rec-empresa{font-family:"Oswald",Arial;font-size:20px;font-weight:700;color:' + cor + ';letter-spacing:1px;}.rec-sub{font-size:11px;color:#aaa;margin-top:2px;}.rec-tel{font-size:12px;color:#ccc;margin-top:4px;}.rec-cnpj{font-size:10px;color:#777;margin-top:2px;}.tit{text-align:center;padding:12px;border-bottom:1px dashed #ddd;background:#fafaf7;}.tit h2{font-family:"Oswald",Arial;font-size:15px;font-weight:700;letter-spacing:3px;color:#1c1c1c;text-transform:uppercase;margin:0;}.rn{font-size:11px;color:#888;margin-top:2px;}.body{padding:14px 20px;background:#fafaf7;}.rc{display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid #f0f0f0;}.rl{font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:#888;font-weight:600;white-space:nowrap;padding-top:2px;}.rv{font-size:13px;font-weight:600;color:#1c1c1c;text-align:right;}.vd{display:flex;justify-content:space-between;align-items:center;background:#f0f0f0;border-radius:6px;padding:10px 14px;margin:12px 0;}.vl{font-size:11px;color:#666;text-transform:uppercase;font-weight:600;}.vv{font-family:"Oswald",Arial;font-size:26px;font-weight:700;color:#1a6b35;}.rod{background:#f5f5f2;padding:12px 20px;border-top:1px dashed #ddd;text-align:center;}.stamp{display:inline-block;border:3px solid #1a6b35;color:#1a6b35;font-family:"Oswald",Arial;font-size:12px;font-weight:700;letter-spacing:3px;padding:3px 10px;border-radius:4px;transform:rotate(-2deg);opacity:.85;margin-bottom:8px;}.ft{font-size:10px;color:#888;}.assin{margin-top:12px;padding-top:6px;border-top:1px solid #ccc;font-size:10px;color:#999;}@media print{body{max-width:none;}@page{margin:8mm;}}</style></head><body>'
-    + '<div class="hdr"><img src="' + logo + '" alt="' + empresa.nome + '"><div>' + infoHtml + '</div></div>'
+    + '<div class="hdr">' + (logo ? '<img src="' + logo + '" alt="' + empresa.nome + '">' : '') + '<div>' + infoHtml + '</div></div>'
     + '<div class="tit"><h2>RECIBO DE PAGAMENTO</h2><div class="rn">Nº ' + numRecibo + '</div></div>'
     + '<div class="body">'
     + '<div class="rc"><span class="rl">Cliente</span><span class="rv">' + c.nome + '</span></div>'
@@ -226,6 +341,7 @@ function _printRecibo(c, pag) {
     + '<div class="rc"><span class="rl">Cobrador</span><span class="rv">' + pag.vigia + '</span></div>'
     + obsHtml
     + '</div>'
+    + _extrasHtml(empresa)
     + '<div class="rod"><div class="stamp">PAGO</div><p class="ft">Gerado por <strong>CobraSetor</strong> · Pagamento confirmado ✅</p><div class="assin"><hr style="border:none;border-top:1px solid #ccc;margin:8px 40px 4px;"><p>Assinatura do Cobrador</p></div></div>'
     + '<script>window.onload=function(){window.print();};<\/script></body></html>';
 

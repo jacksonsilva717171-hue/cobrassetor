@@ -1,5 +1,5 @@
-// CobraSetor — Service Worker v26
-const CACHE = 'cobrassetor-v26';
+// CobraSetor — Service Worker v27
+const CACHE = 'cobrassetor-v27';
 const ASSETS = [
   './index.html',
   './js/config.js',
@@ -47,6 +47,23 @@ self.addEventListener('fetch', e => {
   // (TypeError: método não suportado). Isso, mais o quota de armazenamento
   // do navegador, pode fazer caches.open().then(c => c.put(...)) falhar.
   if (e.request.method !== 'GET') return;
+
+  // Imagens de img/ (logos dos recibos): rede primeiro, cache só se offline.
+  // Assim um logo trocado no servidor aparece na hora, sem ficar preso no cache.
+  if (new URL(e.request.url).pathname.includes('/img/')) {
+    e.respondWith(
+      fetch(e.request).then(resp => {
+        if (resp && resp.status === 200 && resp.type === 'basic') {
+          const clone = resp.clone();
+          caches.open(CACHE)
+            .then(c => c.put(e.request, clone))
+            .catch(err => console.warn('SW: falha ao gravar no cache', e.request.url, err));
+        }
+        return resp;
+      }).catch(() => caches.match(e.request))
+    );
+    return;
+  }
 
   e.respondWith(
     caches.match(e.request).then(cached => {
