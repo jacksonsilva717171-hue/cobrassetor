@@ -35,6 +35,9 @@ function renderCob() {
   // Atualiza badges de cobrado
   _atualizarBadgesCobrado(setor);
 
+  // Botões de folha impressa / recibos / baixa pela foto (folha.js)
+  if (typeof atualizarBotoesFolha === 'function') atualizarBotoesFolha();
+
   // Abas de COBRADO
   if (['cobhoje','cobsem','cobmes'].includes(cobTab)) {
     _renderCobrado(el, setor, cobTab);
