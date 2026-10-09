@@ -489,6 +489,175 @@ function modeloReciboPapel(setor) {
   return (dono && MODELOS_RECIBO_PAPEL[dono.usuario]) || null;
 }
 
+// ─────────────────────────────────────────────
+// VALOR POR EXTENSO (reais e centavos)
+// ─────────────────────────────────────────────
+const _EXT_UNI = ['zero', 'um', 'dois', 'três', 'quatro', 'cinco', 'seis', 'sete', 'oito', 'nove',
+  'dez', 'onze', 'doze', 'treze', 'quatorze', 'quinze', 'dezesseis', 'dezessete', 'dezoito', 'dezenove'];
+const _EXT_DEZ = ['', '', 'vinte', 'trinta', 'quarenta', 'cinquenta', 'sessenta', 'setenta', 'oitenta', 'noventa'];
+const _EXT_CEN = ['', 'cento', 'duzentos', 'trezentos', 'quatrocentos', 'quinhentos', 'seiscentos', 'setecentos', 'oitocentos', 'novecentos'];
+
+function _extenso999(n) {
+  if (n === 0) return '';
+  if (n === 100) return 'cem';
+  const c = Math.floor(n / 100), r = n % 100, partes = [];
+  if (c) partes.push(_EXT_CEN[c]);
+  if (r) {
+    if (r < 20) partes.push(_EXT_UNI[r]);
+    else {
+      const d = Math.floor(r / 10), u = r % 10;
+      partes.push(u ? _EXT_DEZ[d] + ' e ' + _EXT_UNI[u] : _EXT_DEZ[d]);
+    }
+  }
+  return partes.join(' e ');
+}
+
+function _extensoInteiro(n) {
+  if (n === 0) return 'zero';
+  const grupos = [];
+  let x = n;
+  while (x > 0) { grupos.push(x % 1000); x = Math.floor(x / 1000); }
+  const nomes = [['', ''], ['mil', 'mil'], ['milhão', 'milhões'], ['bilhão', 'bilhões']];
+  const partes = [];
+  for (let i = grupos.length - 1; i >= 0; i--) {
+    const g = grupos[i];
+    if (!g) continue;
+    let txt = (i === 1 && g === 1) ? 'mil' : _extenso999(g) + (i ? ' ' + nomes[i][g === 1 ? 0 : 1] : '');
+    partes.push({ g, txt });
+  }
+  // "e" antes do último grupo quando ele é < 100 ou centena redonda (ex.: mil e cinquenta, mil e duzentos)
+  return partes.map((p, i) => {
+    if (i === 0) return p.txt;
+    const sep = (i === partes.length - 1 && (p.g < 100 || p.g % 100 === 0)) ? ' e ' : ' ';
+    return sep + p.txt;
+  }).join('');
+}
+
+/** 120.5 → "cento e vinte reais e cinquenta centavos" */
+function valorPorExtenso(valor) {
+  const total = Math.round((parseFloat(valor) || 0) * 100);
+  const reais = Math.floor(total / 100), cent = total % 100;
+  const partes = [];
+  if (reais) {
+    const milhoesRedondos = reais >= 1000000 && reais % 1000000 === 0;
+    partes.push(_extensoInteiro(reais) + (milhoesRedondos ? ' de' : '') + (reais === 1 ? ' real' : ' reais'));
+  }
+  if (cent) partes.push(_extensoInteiro(cent) + (cent === 1 ? ' centavo' : ' centavos'));
+  return partes.length ? partes.join(' e ') : 'zero reais';
+}
+
+// ─────────────────────────────────────────────
+// FUNÇÃO 3 — RECIBOS DE PAPEL
+// ─────────────────────────────────────────────
+const _MESES_EXT = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto',
+  'setembro', 'outubro', 'novembro', 'dezembro'];
+
+/**
+ * Um recibo por mês em aberto, na MESMA lista e ordem da folha
+ * (listaFolhaCobranca). Numeração = posição do cliente na folha.
+ */
+function listaRecibosPapel(setor, dataISO) {
+  const recibos = [];
+  listaFolhaCobranca(setor, dataISO).forEach(it => {
+    it.meses.forEach((m, i) => {
+      recibos.push({
+        n: recibos.length + 1,
+        ordem: it.ordem,
+        parte: it.meses.length > 1 ? `${i + 1}/${it.meses.length}` : '',
+        c: it.c,
+        valor: parseFloat(it.c.valor) || 0,
+        data: m.data,
+        ym: m.ym,
+      });
+    });
+  });
+  return recibos;
+}
+
+/** Quebra o texto em 2 linhas pelo limite de caracteres da 1ª caixa */
+function _quebra2(txt, max) {
+  if (txt.length <= max) return [txt, ''];
+  const palavras = txt.split(' ');
+  let a = '';
+  while (palavras.length && (a ? a + ' ' + palavras[0] : palavras[0]).length <= max) a = a ? a + ' ' + palavras.shift() : palavras.shift();
+  return [a, palavras.join(' ')];
+}
+
+const _ICONE_ZAP = '<svg viewBox="0 0 24 24" class="re-zap" aria-hidden="true"><circle cx="12" cy="12" r="10" fill="none" stroke="#000" stroke-width="2"/><path d="M8.2 6.9c.3-.3.8-.3 1 .1l1 1.9c.2.3.1.7-.1 1l-.7.7c.5 1.2 1.6 2.4 2.9 3l.7-.7c.3-.3.7-.3 1-.1l1.9 1c.4.2.4.7.1 1l-.9.9c-.6.6-1.6.7-2.4.3-2.2-1.1-3.9-2.8-5-5-.4-.8-.3-1.8.3-2.4z" fill="#000"/></svg>';
+
+/** Um recibo GRUPO ELITE (126 × 62 mm), igual ao RECIBOS.pdf, assinatura em branco */
+function _reciboEliteHTML(r) {
+  const c = r.c;
+  const [ext1, ext2] = _quebra2(valorPorExtenso(r.valor), 46);
+  const dia = String(r.data.getDate()).padStart(2, '0');
+  const mes = _MESES_EXT[r.data.getMonth()];
+  const ano = r.data.getFullYear();
+  const linha2 = [c.id, _ruaNum(c)].filter(Boolean).join(' · ');
+  return `<div class="re">
+    <div class="re-num">#${r.ordem}${r.parte ? ' · ' + r.parte : ''}</div>
+    <div class="re-cab">
+      <div class="re-marca">GRUPO ELITE</div>
+      <div class="re-ramo">CONDOMÍNIOS - RESIDENCIAIS - COMÉRCIOS</div>
+      <div class="re-cnpj">38.165.898/0001-20</div>
+      <div class="re-tel">(47) 99944.7354${_ICONE_ZAP}</div>
+    </div>
+    <div class="re-cxval">
+      <div class="re-tit">RECIBO</div>
+      <div class="re-rs">R$</div>
+      <div class="re-campo-rs">${esc(r.valor.toFixed(2).replace('.', ',').replace(/\B(?=(\d{3})+(?!\d))/g, '.'))}</div>
+    </div>
+    <div class="re-lbl re-l1">Recebi(emos) de</div>
+    <div class="re-cx re-c1"><span class="re-nome">${esc(c.nome)}</span></div>
+    <div class="re-cx re-c2"><span class="re-peq">${esc(linha2)}</span></div>
+    <div class="re-lbl re-l3">a importância de</div>
+    <div class="re-cx re-c3"><span>${esc(ext1)}</span></div>
+    <div class="re-cx re-c4"><span>${esc(ext2)}</span></div>
+    <div class="re-prov">Proveniente de <b><i>SERVIÇO DE SEGURANÇA ELETRÔNICA.</i></b></div>
+    <div class="re-data"><span class="re-bl re-bl1">${dia}</span>de<span class="re-bl re-bl2">${mes}</span>de<span class="re-bl re-bl3">${ano}</span></div>
+    <div class="re-clareza">Para maior clareza, firmamos o presente</div>
+    <div class="re-assin">ASSINATURA</div>
+  </div>`;
+}
+
+/** Folhas A4 com 6 recibos: 4 em pé à esquerda (1-4) e 2 deitados à direita (5-6) */
+function _paginasRecibos6(recibos, renderUm) {
+  const paginas = [];
+  for (let i = 0; i < recibos.length; i += 6) {
+    const grupo = recibos.slice(i, i + 6);
+    const slots = grupo.map((r, k) =>
+      `<div class="rp-slot ${k < 4 ? 'rp-pe rp-pe' + (k + 1) : 'rp-deit rp-deit' + (k - 3)}">${renderUm(r)}</div>`).join('');
+    paginas.push(`<div class="rp-page">
+      <div class="rp-corte rp-cv"></div>
+      <div class="rp-corte rp-ch rp-ch1"></div>
+      <div class="rp-corte rp-ch rp-ch2"></div>
+      <div class="rp-corte rp-ch rp-ch3"></div>
+      ${slots}
+    </div>`);
+  }
+  return paginas.join('');
+}
+
+MODELOS_RECIBO_PAPEL.elite2022 = {
+  nome: 'GRUPO ELITE',
+  porFolha: 6,
+  render: recibos => _paginasRecibos6(recibos, _reciboEliteHTML),
+};
+
+function htmlRecibosPapel(setor, dataISO) {
+  const modelo = modeloReciboPapel(setor);
+  if (!modelo) return '';
+  const recibos = listaRecibosPapel(setor, dataISO);
+  if (!recibos.length) return '<div class="fl-page"><div class="fl-vazio">Nenhum recibo: nenhum cliente com vencimento até esta data.</div></div>';
+  return modelo.render(recibos);
+}
+
+function imprimirRecibos(setor, dataISO) {
+  if (!podeVerSetor(setor)) { toast('🚫 Setor fora das suas permissões.', 'err'); return; }
+  if (!modeloReciboPapel(setor)) { toast('⚠️ Este setor ainda não tem modelo de recibo de papel.', 'warn'); return; }
+  const n = listaRecibosPapel(setor, dataISO).length;
+  abrirImpressao(`Recibos — ${setor} · ${n} recibo(s)`, htmlRecibosPapel(setor, dataISO), '0');
+}
+
 /** Mostra/esconde os botões da tela de Cobrança conforme os setores do usuário */
 function atualizarBotoesFolha() {
   const r = document.getElementById('btn-imp-recibos');

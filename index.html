@@ -1006,6 +1006,53 @@ textarea { resize: vertical; min-height: 60px; }
 .fl-vazio { padding: 10mm; text-align: center; font-size: 12pt; }
 .fl-total { display: flex; justify-content: space-between; border-top: 2.5px solid #000; margin-top: 3mm; padding-top: 2mm; font-size: 12pt; }
 
+/* Recibos de papel — página A4 com 6 recibos (modelo RECIBOS.pdf) */
+.rp-page { position: relative; width: 210mm; height: 297mm; overflow: hidden; page-break-after: always; break-after: page; color: #000; }
+.rp-page:last-child { page-break-after: auto; break-after: auto; }
+.rp-corte { position: absolute; background: #b5b5b5; }
+.rp-cv { left: 140mm; top: 0; width: .2mm; height: 297mm; }
+.rp-ch { left: 0; width: 140mm; height: .2mm; }
+.rp-ch1 { top: 74.25mm; } .rp-ch3 { top: 222.75mm; }
+.rp-ch2 { top: 148.5mm; width: 210mm; }
+.rp-slot { position: absolute; }
+.rp-pe { left: 7mm; width: 126mm; height: 62mm; }
+.rp-pe1 { top: 6.1mm; } .rp-pe2 { top: 80.35mm; } .rp-pe3 { top: 154.6mm; } .rp-pe4 { top: 228.85mm; }
+.rp-deit { left: 140mm; width: 70mm; height: 148.5mm; }
+.rp-deit1 { top: 0; } .rp-deit2 { top: 148.5mm; }
+.rp-deit .re { position: absolute; left: -28mm; top: 43.25mm; transform: rotate(-90deg); }
+
+.re { position: relative; width: 126mm; height: 62mm; border: .35mm solid #1a1a1a; border-radius: 3mm; background: #fff; font-family: Arial, Helvetica, sans-serif; color: #000; overflow: hidden; }
+.re > div { position: absolute; }
+.re-num { left: 81.6mm; top: 1.3mm; font-size: 7pt; font-weight: 700; color: #333; z-index: 2; }
+.re-cab { left: 0; top: 0; width: 80mm; height: 18mm; border-right: .35mm solid #1a1a1a; border-bottom: .35mm solid #1a1a1a; }
+.re-cab > div { position: absolute; }
+.re-marca { left: 0; right: 0; top: .2mm; text-align: center; font-family: 'Arial Black', Arial, sans-serif; font-weight: 900; font-size: 23pt; line-height: 1; letter-spacing: .6mm; color: #a9a9a9; -webkit-text-stroke: .28mm #111; text-shadow: .35mm .35mm 0 #555; }
+.re-ramo { left: 7mm; right: 7mm; top: 9.3mm; text-align: center; font-size: 6.2pt; font-weight: 700; border-bottom: .3mm solid #1a1a1a; padding-bottom: .3mm; white-space: nowrap; }
+.re-cnpj { left: 1.6mm; top: 13.6mm; font-size: 8pt; font-weight: 700; }
+.re-tel { right: 3mm; top: 12.6mm; font-size: 9.6pt; font-weight: 700; display: flex; align-items: center; gap: .4mm; }
+.re-zap { width: 3.6mm; height: 3.6mm; }
+.re-cxval { left: 80mm; top: 0; width: 46mm; height: 18mm; border-bottom: .35mm solid #1a1a1a; }
+.re-cxval > div { position: absolute; }
+.re-tit { right: 5mm; top: 1.2mm; font-family: 'Arial Black', Arial, sans-serif; font-style: italic; font-weight: 900; font-size: 11.5pt; letter-spacing: .5mm; color: #fff; -webkit-text-stroke: .22mm #111; }
+.re-rs { left: 2.4mm; top: 10.6mm; font-size: 11pt; font-weight: 900; font-style: italic; }
+.re-campo-rs { left: 9.5mm; top: 9.2mm; width: 34mm; height: 6.6mm; line-height: 6.6mm; padding-left: 2mm; border-bottom: .3mm solid #1a1a1a; font-size: 12pt; font-weight: 700; background-color: #ececec; background-image: radial-gradient(#c4c4c4 .25mm, transparent .3mm); background-size: .9mm .9mm; }
+.re-lbl { left: 1.6mm; font-size: 8.2pt; }
+.re-l1 { top: 20.1mm; } .re-l3 { top: 33.3mm; }
+.re-cx { border: .3mm solid #1a1a1a; border-radius: 1.3mm; display: flex; align-items: center; padding: 0 1.6mm; white-space: nowrap; overflow: hidden; font-size: 8.6pt; }
+.re-cx span { overflow: hidden; text-overflow: ellipsis; }
+.re-c1 { left: 23.6mm; right: 1.6mm; top: 19.2mm; height: 5.4mm; }
+.re-c2 { left: 1.6mm; right: 1.6mm; top: 26mm; height: 5.2mm; }
+.re-c3 { left: 24.4mm; right: 1.6mm; top: 32.4mm; height: 5.4mm; }
+.re-c4 { left: 1.6mm; right: 1.6mm; top: 39.2mm; height: 5.2mm; }
+.re-nome { font-weight: 700; font-size: 9pt; }
+.re-peq { font-size: 7pt; color: #222; }
+.re-prov { left: 1.6mm; top: 45.6mm; font-size: 6.4pt; }
+.re-data { left: 3mm; top: 50.3mm; font-size: 7pt; font-style: italic; display: flex; align-items: flex-end; gap: .6mm; }
+.re-bl { display: inline-block; border-bottom: .25mm solid #1a1a1a; text-align: center; font-style: normal; font-weight: 700; font-size: 8.4pt; line-height: 1.15; }
+.re-bl1 { width: 16mm; } .re-bl2 { width: 21mm; } .re-bl3 { width: 9mm; }
+.re-clareza { left: 3mm; top: 56.2mm; font-size: 6.6pt; font-weight: 700; font-style: italic; }
+.re-assin { left: 62mm; right: 3mm; top: 56.6mm; border-top: .3mm solid #1a1a1a; text-align: center; padding-left: 18mm; font-size: 7.4pt; font-weight: 900; font-style: italic; line-height: 1.2; }
+
 /* Baixa pela foto */
 .ft-upl { position: relative; overflow: hidden; cursor: pointer; }
 .ft-upl input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
@@ -1029,6 +1076,7 @@ textarea { resize: vertical; min-height: 60px; }
 .ft-ok { font-family: 'Rajdhani', sans-serif; font-size: 20px; color: var(--success); margin: 6px 0; }
 
 @media print {
+  html, body.imprimindo { height: auto !important; min-height: 0 !important; overflow: visible !important; }
   body.imprimindo { background: #fff !important; }
   body.imprimindo > *:not(#print-view) { display: none !important; }
   body.imprimindo #print-view { position: static; display: block; background: #fff; overflow: visible; animation: none; }
