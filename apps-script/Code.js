@@ -2304,6 +2304,7 @@ function getConfigProp(usuario) {
     if (String(rows[i][cU]).trim() === usuario) {
       const obj = rowToObj(header, rows[i]);
       if (obj.atualizadoEm instanceof Date) obj.atualizadoEm = obj.atualizadoEm.toISOString();
+      ['chavePix', 'empresa', 'msgHoje', 'msgAtraso'].forEach(k => { obj[k] = String(obj[k] == null ? '' : obj[k]); });
       return { ok: true, data: obj };
     }
   }
@@ -2337,7 +2338,11 @@ function salvarConfigProp(dados) {
         return { ok: true, data: reg };
       }
     }
-    sheet.appendRow(linha);
+    // appendRow ignora o formato texto e converte "0123..." em número (perde o
+    // zero da chave Pix) — grava na próxima linha com formato texto antes
+    const alvo = sheet.getRange(sheet.getLastRow() + 1, 1, 1, linha.length);
+    alvo.setNumberFormat('@');
+    alvo.setValues([linha]);
     SpreadsheetApp.flush();
     return { ok: true, data: reg };
   });

@@ -64,6 +64,7 @@ function cfgDoProp(usuario) {
   const srv = CFG_PROP[usuario] || {};
   const out = { ...cfgPadraoProp(usuario) };
   [loc, srv].forEach(o => Object.keys(o).forEach(k => { if (o[k] !== undefined && o[k] !== null) out[k] = o[k]; }));
+  out.chavePix = String(out.chavePix ?? '');  // planilha pode devolver número
   return out;
 }
 
