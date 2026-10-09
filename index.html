@@ -997,6 +997,7 @@ textarea { resize: vertical; min-height: 60px; }
 .fl-tab tbody tr:nth-child(even) td { background: #f6f6f6; }
 .fl-x { width: 12mm; text-align: center !important; }
 .fl-box { display: inline-block; width: 8mm; height: 8mm; border: 2px solid #000; border-radius: 1mm; background: #fff; vertical-align: middle; }
+.fl-meses { display: block; margin-top: 1.2mm; font-size: 7pt; white-space: nowrap; letter-spacing: 0; }
 .fl-cod { font-family: 'Courier New', monospace; font-size: 13pt; font-weight: 700; white-space: nowrap; overflow-wrap: normal !important; letter-spacing: .3px; }
 .fl-cod small { font-family: Arial, sans-serif; font-size: 7pt; font-weight: 400; color: #555; margin-right: 1.5mm; vertical-align: middle; }
 .fl-nome { font-weight: 700; }
@@ -1091,6 +1092,16 @@ textarea { resize: vertical; min-height: 60px; }
 .ft-txt small { display: block; color: var(--text2); margin-top: 2px; }
 .ft-txt small.ft-warn, .ft-aviso { color: var(--warn); }
 .ft-aviso { background: rgba(255,176,32,.08); border: 1px solid rgba(255,176,32,.3); border-radius: var(--radius); padding: 8px 10px; font-size: 12px; margin: 6px 0; }
+.ft-n { display: flex; align-items: center; gap: 6px; margin-top: 6px; font-size: 12px; color: var(--text); }
+.ft-n b { min-width: 18px; text-align: center; font-size: 15px; color: var(--accent3); }
+.ft-n .btn { min-width: 26px; justify-content: center; font-size: 13px; }
+.ft-n-de { color: var(--text3); }
+.ft-item:not(.sel) .ft-n, .ft-item:not(.sel) .ft-aviso-n { display: none !important; }
+.ft-item.aviso-n { border-color: rgba(255,176,32,.6); border-left-color: var(--warn); background: rgba(255,176,32,.10); }
+.ft-resumo-tit { font-family: 'Rajdhani', sans-serif; font-size: 18px; font-weight: 700; color: var(--accent); margin: 6px 0 10px; }
+.ft-resumo-lista { display: flex; flex-direction: column; gap: 6px; max-height: 46vh; overflow-y: auto; }
+.ft-resumo-item { background: var(--bg3); border: 1px solid var(--border); border-radius: var(--radius); padding: 8px 10px; font-size: 12px; display: flex; flex-direction: column; gap: 2px; }
+.ft-resumo-item span { color: var(--text2); }
 .ft-ok { font-family: 'Rajdhani', sans-serif; font-size: 20px; color: var(--success); margin: 6px 0; }
 
 @media print {
@@ -2021,7 +2032,16 @@ textarea { resize: vertical; min-height: 60px; }
       <div class="modal-info" id="ft-resumo" style="margin-top:12px;"></div>
       <div class="fact">
         <button class="btn bc" onclick="_fotoPasso(1)">← Voltar</button>
-        <button class="btn bs" id="ft-btn-confirmar" onclick="fotoConfirmarBaixa()">✅ Confirmar baixa</button>
+        <button class="btn bs" id="ft-btn-confirmar" onclick="fotoMostrarResumo()">✅ Confirmar baixa</button>
+      </div>
+    </div>
+
+    <div id="ft-passo5" style="display:none;">
+      <div class="ft-meta">Confira o resumo. Nada foi gravado ainda.</div>
+      <div id="ft-resumo-final"></div>
+      <div class="fact">
+        <button class="btn bc" onclick="_fotoPasso(3)">← Voltar e corrigir</button>
+        <button class="btn bs" id="ft-btn-gravar" onclick="fotoGravarBaixa()">💾 Gravar baixa</button>
       </div>
     </div>
 

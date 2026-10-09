@@ -181,7 +181,7 @@ function htmlFolhaCobranca(setor, dataISO) {
       ? `${fR(it.valorTotal)}<small>${it.meses.length}× ${fR(c.valor)}</small>`
       : fR(it.valorTotal);
     return `<tr>
-      <td class="fl-x"><span class="fl-box"></span></td>
+      <td class="fl-x"><span class="fl-box"></span>${it.meses.length > 1 ? '<span class="fl-meses">____ meses</span>' : ''}</td>
       <td class="fl-cod"><small>${it.ordem}</small>${esc(c.id)}</td>
       <td class="fl-rua">${esc(_ruaNum(c))}</td>
       <td class="fl-nome">${esc(c.nome)}</td>
@@ -204,10 +204,10 @@ function htmlFolhaCobranca(setor, dataISO) {
         Total de clientes: <strong>${itens.length}</strong>
       </div>
     </div>
-    <div class="fl-instr">Marque com <strong>X</strong> a caixinha de cada cliente que pagou.</div>
+    <div class="fl-instr">Marque com <strong>X</strong> a caixinha de cada cliente que pagou. Se pagou mais de 1 mês, escreva quantos em <strong>"____ meses"</strong>.</div>
     ${itens.length ? `<table class="fl-tab">
       <colgroup>
-        <col style="width:11mm"><col style="width:35mm"><col style="width:34mm"><col>
+        <col style="width:17mm"><col style="width:33mm"><col style="width:31mm"><col>
         <col style="width:25mm"><col style="width:19mm"><col style="width:14mm"><col style="width:21mm">
       </colgroup>
       <thead><tr>
@@ -264,7 +264,7 @@ function fecharFotoModal() {
 }
 
 function _fotoPasso(n) {
-  [1, 2, 3, 4].forEach(i => {
+  [1, 2, 3, 4, 5].forEach(i => {
     const el = document.getElementById('ft-passo' + i);
     if (el) el.style.display = i === n ? '' : 'none';
   });
@@ -367,6 +367,23 @@ async function fotoLer() {
   _fotoPasso(3);
 }
 
+// Meses pagos por cliente na conferência: _fotoN[i] = N; _fotoAvisoN[i] = texto amarelo ou null
+let _fotoN = [], _fotoAvisoN = [];
+
+/**
+ * N padrão de cada cliente: o número lido junto ao X; sem número → 1
+ * (nunca assume que pagou tudo). Nunca passa do total em aberto.
+ */
+function _fotoPadraoN(it, m) {
+  const max = it.meses.length;
+  const lido = m && Number.isInteger(m.meses) && m.meses >= 1 ? m.meses : null;
+  if (lido !== null) {
+    if (lido > max) return { n: max, aviso: `Lido "${lido}" meses, mas só há ${max} em aberto — usei ${max}. Confira.` };
+    return { n: lido, aviso: m.confiancaMeses !== 'alta' ? `Número de meses duvidoso (lido ${lido}) — confira na folha.` : null };
+  }
+  return { n: 1, aviso: max >= 2 ? 'Quantos meses foram pagos?' : null };
+}
+
 function _fotoRenderRevisao() {
   const lidos = new Map((_fotoLeitura.marcados || []).map(m => [String(m.codigo).toUpperCase(), m]));
   const naLista = new Set(_fotoItens.map(it => String(it.c.id).toUpperCase()));
@@ -376,20 +393,30 @@ function _fotoRenderRevisao() {
     ? `<div class="ft-aviso">⚠️ Lido na foto mas <strong>não está na lista</strong> deste setor/data: ${fora.map(m => esc(m.codigo)).join(', ')} — confira na folha.</div>`
     : '';
 
+  _fotoN = []; _fotoAvisoN = [];
   const linhas = _fotoItens.map((it, i) => {
     const c = it.c;
     const m = lidos.get(String(c.id).toUpperCase());
     const duvida = m && m.confianca !== 'alta';
     const marcado = m && !duvida;
+    const pad = _fotoPadraoN(it, m);
+    _fotoN[i] = pad.n; _fotoAvisoN[i] = pad.aviso;
     const jaPago = it.meses.filter(ms => PAG.some(p => p.cid === c.id && parseInt(p.mesPago) === ms.ym));
-    const meses = it.meses.length > 1 ? ` · ${it.meses.length} meses (${it.meses.map(ms => lbM(ms.ym)).join(', ')})` : ` · ${lbM(it.meses[0].ym)}`;
-    return `<label class="ft-item${duvida ? ' duvida' : ''}${marcado ? ' ok' : ''}">
+    const meses = it.meses.length > 1 ? ` · ${it.meses.length} meses em aberto (${it.meses.map(ms => lbM(ms.ym)).join(', ')})` : ` · ${lbM(it.meses[0].ym)}`;
+    return `<label class="ft-item${duvida ? ' duvida' : ''}${marcado ? ' ok' : ''}" data-i="${i}">
       <input type="checkbox" data-i="${i}" ${marcado ? 'checked' : ''} onchange="_fotoAtualizaResumo()">
       <span class="ft-ord">${it.ordem}</span>
       <span class="ft-txt"><strong>${esc(c.id)}</strong> — ${esc(c.nome)}
-        <small>${esc(_ruaNum(c))}${meses} · ${fR(it.valorTotal)}</small>
+        <small>${esc(_ruaNum(c))}${meses} · ${fR(c.valor)}/mês</small>
         ${duvida ? `<small class="ft-warn">⚠️ Leitura duvidosa (confiança ${esc(m.confianca)}) — confira na folha antes de marcar</small>` : ''}
         ${jaPago.length ? `<small class="ft-warn">⚠️ Já existe pagamento de ${jaPago.map(ms => lbM(ms.ym)).join(', ')}</small>` : ''}
+        <span class="ft-n">Meses pagos:
+          <button type="button" class="btn bc bxs" onclick="fotoAjustaN(${i},-1)" aria-label="menos">−</button>
+          <b id="ft-n-${i}">${pad.n}</b>
+          <button type="button" class="btn bc bxs" onclick="fotoAjustaN(${i},1)" aria-label="mais">+</button>
+          <small class="ft-n-de">de ${it.meses.length} em aberto</small>
+        </span>
+        <small class="ft-warn ft-aviso-n" id="ft-aviso-${i}">${pad.aviso ? '⚠️ ' + esc(pad.aviso) : ''}</small>
       </span>
     </label>`;
   }).join('');
@@ -401,54 +428,98 @@ function _fotoRenderRevisao() {
   _fotoAtualizaResumo();
 }
 
+/** Botões − / +: entre 1 e o total de meses em aberto. Editar tira o aviso amarelo. */
+function fotoAjustaN(i, delta) {
+  const it = _fotoItens[i];
+  if (!it) return;
+  _fotoN[i] = Math.min(it.meses.length, Math.max(1, (_fotoN[i] || 1) + delta));
+  _fotoAvisoN[i] = null;
+  document.getElementById('ft-n-' + i).textContent = _fotoN[i];
+  document.getElementById('ft-aviso-' + i).textContent = '';
+  _fotoAtualizaResumo();
+}
+
+/** Selecionados com os meses que serão pagos: [{ it, n, meses:[{ym,data}], valor }] */
 function _fotoSelecionados() {
   return [...document.querySelectorAll('#ft-revisao input[type=checkbox]:checked')]
-    .map(cb => _fotoItens[parseInt(cb.dataset.i)]).filter(Boolean);
+    .map(cb => {
+      const i = parseInt(cb.dataset.i);
+      const it = _fotoItens[i];
+      if (!it) return null;
+      const n = Math.min(it.meses.length, Math.max(1, _fotoN[i] || 1));
+      return { i, it, n, meses: it.meses.slice(0, n), valor: (parseFloat(it.c.valor) || 0) * n };
+    }).filter(Boolean);
+}
+
+function _fotoTotais(sel) {
+  return {
+    clientes: sel.length,
+    mensalidades: sel.reduce((a, s) => a + s.n, 0),
+    total: sel.reduce((a, s) => a + s.valor, 0),
+  };
 }
 
 function _fotoAtualizaResumo() {
   const sel = _fotoSelecionados();
-  const total = sel.reduce((a, it) => a + it.valorTotal, 0);
-  const nMeses = sel.reduce((a, it) => a + it.meses.length, 0);
+  const t = _fotoTotais(sel);
   document.querySelectorAll('#ft-revisao .ft-item').forEach(el => {
-    el.classList.toggle('sel', el.querySelector('input').checked);
+    const i = parseInt(el.dataset.i);
+    const marcado = el.querySelector('input').checked;
+    el.classList.toggle('sel', marcado);
+    el.classList.toggle('aviso-n', marcado && !!_fotoAvisoN[i]);
   });
   document.getElementById('ft-resumo').innerHTML = sel.length
-    ? `<strong>${sel.length} cliente(s), total ${fR(total)}</strong>${nMeses > sel.length ? ` (${nMeses} mensalidades)` : ''}<br><small>${sel.map(it => esc(it.c.nome)).join(', ')}</small>`
+    ? `<strong>${t.clientes} cliente(s), ${t.mensalidades} mensalidade(s), total ${fR(t.total)}</strong><br><small>${sel.map(s => esc(s.it.c.nome) + (s.n > 1 ? ` (${s.n} meses)` : '')).join(', ')}</small>`
     : 'Nenhum cliente marcado.';
   document.getElementById('ft-btn-confirmar').disabled = !sel.length;
 }
 
+/** "Confirmar baixa": mostra o resumo final; só grava depois de "Gravar baixa" */
+function fotoMostrarResumo() {
+  const sel = _fotoSelecionados();
+  if (!sel.length) return;
+  const t = _fotoTotais(sel);
+  const pendentes = sel.filter(s => _fotoAvisoN[s.i]);
+  document.getElementById('ft-resumo-final').innerHTML =
+    `<div class="ft-resumo-tit">${t.clientes} cliente(s), ${t.mensalidades} mensalidade(s), total ${fR(t.total)}</div>`
+    + (pendentes.length ? `<div class="ft-aviso">⚠️ Ainda com aviso amarelo: ${pendentes.map(s => esc(s.it.c.nome)).join(', ')} — confira os meses antes de gravar.</div>` : '')
+    + '<div class="ft-resumo-lista">' + sel.map(s =>
+      `<div class="ft-resumo-item"><strong>${esc(s.it.c.id)} — ${esc(s.it.c.nome)}</strong>
+        <span>${s.n} ${s.n > 1 ? 'meses' : 'mês'}: ${s.meses.map(ms => lbM(ms.ym)).join(', ')} · ${fR(s.valor)}</span></div>`).join('')
+    + '</div>';
+  _fotoPasso(5);
+}
+
 /**
  * Grava a baixa com o MESMO núcleo de pagamento do app (registrarPagamento,
- * cobrancas.js): uma mensalidade por mês em aberto que aparece na folha,
- * cada uma com o valor do cliente e avançando o vencimento 1 mês.
+ * cobrancas.js): exatamente N mensalidades por cliente — os N meses mais
+ * antigos em aberto —, cada uma com o valor da mensalidade; o vencimento
+ * avança N meses.
  */
-async function fotoConfirmarBaixa() {
+async function fotoGravarBaixa() {
   if (_baixando) return;
   const sel = _fotoSelecionados();
   if (!sel.length) return;
-  const total = sel.reduce((a, it) => a + it.valorTotal, 0);
-  if (!confirm(`Confirmar baixa de ${sel.length} cliente(s), total ${fR(total)}?`)) return;
+  const t = _fotoTotais(sel);
 
   _baixando = true;
   _fotoPasso(4);
   const prog = document.getElementById('ft-progresso');
   const falhas = [];
-  let n = 0;
-  for (const it of sel) {
-    n++;
-    prog.textContent = `⏳ Gravando ${n}/${sel.length}: ${it.c.nome}...`;
-    for (const ms of it.meses) {
-      const c = CLI.find(x => x.id === it.c.id && x.setor === it.c.setor) || it.c;
+  let k = 0;
+  for (const s of sel) {
+    k++;
+    prog.textContent = `⏳ Gravando ${k}/${sel.length}: ${s.it.c.nome} (${s.n} ${s.n > 1 ? 'meses' : 'mês'})...`;
+    for (const ms of s.meses) {
+      const c = CLI.find(x => x.id === s.it.c.id && x.setor === s.it.c.setor) || s.it.c;
       const { envio } = registrarPagamento(c, ms.ym, formaPadraoPagamento(c), 'Baixa pela folha (foto)');
       const r = await envio;
-      if (!r || r.ok === false) falhas.push(`${it.c.nome} (${lbM(ms.ym)})`);
+      if (!r || r.ok === false) falhas.push(`${s.it.c.nome} (${lbM(ms.ym)})`);
     }
   }
   renderAll();
 
-  // Confere direto no servidor se o vencimento avançou
+  // Confere direto no servidor se o vencimento avançou exatamente N meses
   prog.textContent = '🔎 Conferindo no servidor...';
   let confirmados = 0, conferiu = false;
   try {
@@ -457,16 +528,16 @@ async function fotoConfirmarBaixa() {
     if (arr) {
       conferiu = true;
       const pvServ = new Map(arr.map(x => [String(x.id), parseInt(x.proxVenc) || 0]));
-      sel.forEach(it => {
-        const esperado = addM(it.meses[it.meses.length - 1].ym, 1);
-        if ((pvServ.get(String(it.c.id)) || 0) >= esperado) confirmados++;
+      sel.forEach(s => {
+        const esperado = addM(s.meses[s.meses.length - 1].ym, 1);
+        if ((pvServ.get(String(s.it.c.id)) || 0) === esperado) confirmados++;
       });
     }
   } catch (_) { /* sem conexão: avisa abaixo */ }
   _baixando = false;
 
   document.getElementById('ft-final').innerHTML =
-    `<div class="ft-ok">✅ Baixa feita em <strong>${sel.length}</strong> cliente(s) · ${fR(total)}</div>`
+    `<div class="ft-ok">✅ Baixa feita em <strong>${t.clientes}</strong> cliente(s) · ${t.mensalidades} mensalidade(s) · ${fR(t.total)}</div>`
     + (conferiu
       ? `<div class="ft-meta">${confirmados === sel.length ? '☁️ Confirmado no servidor para todos.' : `⚠️ Servidor confirmou ${confirmados} de ${sel.length} — sincronize e confira.`}</div>`
       : '<div class="ft-meta">⚠️ Não foi possível conferir no servidor agora (sem conexão).</div>')
@@ -477,7 +548,7 @@ async function fotoConfirmarBaixa() {
         <button class="btn bc" onclick="fecharFotoModal()">Fechar</button>
       </div>`;
   prog.textContent = '';
-  toast(`✅ Baixa feita em ${sel.length} cliente(s)`);
+  toast(`✅ Baixa feita em ${t.clientes} cliente(s) · ${t.mensalidades} mensalidade(s)`);
 }
 
 // ─────────────────────────────────────────────

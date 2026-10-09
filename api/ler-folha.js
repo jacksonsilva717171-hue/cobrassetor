@@ -2,7 +2,8 @@
 //
 // Recebe 1 a 6 fotos (JPEG em base64) da folha de cobrança devolvida pelo
 // vigilante e devolve os códigos de cliente cuja caixinha está marcada.
-// 1ª leitura: Claude Haiku 5.5. Se algum código vier com confiança não-alta
+// Para cada um lê também "meses" (número escrito à mão junto ao X, ou null).
+// 1ª leitura: Claude Haiku 5.5. Se algum código OU número vier com confiança não-alta
 // ou não existir no setor, a MESMA foto é relida com Claude Sonnet 5.5 e o
 // resultado do Sonnet é o que vale para aquela foto.
 //
@@ -49,10 +50,12 @@ const ESQUEMA = {
       items: {
         type: 'object',
         properties: {
-          codigo:    { type: 'string' },
-          confianca: { type: 'string', enum: ['alta', 'media', 'baixa'] },
+          codigo:         { type: 'string' },
+          confianca:      { type: 'string', enum: ['alta', 'media', 'baixa'] },
+          meses:          { type: ['integer', 'null'] },
+          confiancaMeses: { type: 'string', enum: ['alta', 'media', 'baixa'] },
         },
-        required: ['codigo', 'confianca'],
+        required: ['codigo', 'confianca', 'meses', 'confiancaMeses'],
         additionalProperties: false,
       },
     },
@@ -75,6 +78,13 @@ function _prompt(codigos) {
     '- "alta": a marca é clara e o código está legível;',
     '- "media": a marca ou o código têm alguma dúvida;',
     '- "baixa": não dá para ter certeza.',
+    '',
+    'MESES PAGOS: quando o cliente pagou mais de 1 mês, o vigilante escreve um número à mão',
+    'junto ao X (ao lado da caixinha, ou no espaço "___ meses" logo abaixo dela), ex.: "X 2".',
+    'Em "meses" coloque esse número inteiro escrito à mão; se não houver número escrito junto',
+    'à marca, use null (não invente, não deduza pela coluna "Meses em atraso" impressa).',
+    'Em "confiancaMeses": "alta" se o número está claro OU se está claro que não há número;',
+    '"media"/"baixa" se há algo escrito que pode ou não ser um número, ou o dígito está duvidoso.',
     '',
     'Copie o código exatamente como impresso. Os códigos impressos nesta folha estão entre estes:',
     codigos.join(', '),
@@ -108,12 +118,15 @@ async function _lerFoto(client, modelo, base64, codigos) {
   const marcados = (json.marcados || []).map(m => ({
     codigo: String(m.codigo || '').trim().toUpperCase(),
     confianca: m.confianca,
+    meses: Number.isInteger(m.meses) && m.meses >= 1 && m.meses <= 36 ? m.meses : null,
+    confiancaMeses: m.confiancaMeses || 'baixa',
   })).filter(m => m.codigo);
   return { modelo: resp.model || modelo, marcados, ms: Date.now() - inicio, uso: resp.usage };
 }
 
 function _precisaRevisao(leitura, validos) {
-  return leitura.marcados.some(m => m.confianca !== 'alta' || !validos.has(m.codigo));
+  return leitura.marcados.some(m =>
+    m.confianca !== 'alta' || m.confiancaMeses !== 'alta' || !validos.has(m.codigo));
 }
 
 module.exports = async function handler(req, res) {
