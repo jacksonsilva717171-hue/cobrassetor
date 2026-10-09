@@ -225,6 +225,258 @@ function imprimirFolha(setor, dataISO) {
 }
 
 // ─────────────────────────────────────────────
+// FUNÇÃO 2 — BAIXA PELA FOTO DA FOLHA
+// ─────────────────────────────────────────────
+// Endereço completo: o app também roda no GitHub Pages, que não tem /api
+const LER_FOLHA_URL = 'https://cobrassetor.vercel.app/api/ler-folha';
+const FOTO_MAX_LADO = 1600;
+const FOTO_MAX_QTD  = 6;
+
+let _fotoArquivos = [];   // [{ nome, dataUrl }] já reduzidas
+let _fotoItens    = [];   // lista da folha (listaFolhaCobranca) em revisão
+let _fotoLeitura  = null; // resposta da API
+let _fotoSetor = '', _fotoData = '';
+let _baixando = false;
+
+function abrirFotoModal(setor, dataISO) {
+  const sel = document.getElementById('ft-setor');
+  const setores = getMeusSetores();
+  if (!setores.length) { toast('⚠️ Nenhum setor disponível.', 'warn'); return; }
+  sel.innerHTML = setores.map(s => `<option value="${esc(s)}">${esc(s)}</option>`).join('');
+  const atual = setor || document.getElementById('fsetor')?.value || '';
+  const achado = setores.find(s => _normSetor(s) === _normSetor(atual));
+  if (achado) sel.value = achado;
+  document.getElementById('ft-data').value = dataISO || isoLocal(new Date());
+  _fotoArquivos = []; _fotoItens = []; _fotoLeitura = null;
+  _fotoPasso(1);
+  _fotoRenderMiniaturas();
+  document.getElementById('fotobg').classList.add('open');
+}
+
+function fecharFotoModal() {
+  if (_baixando) { toast('⏳ Aguarde terminar a baixa.', 'warn'); return; }
+  document.getElementById('fotobg').classList.remove('open');
+  _fotoArquivos = [];
+}
+
+function _fotoPasso(n) {
+  [1, 2, 3, 4].forEach(i => {
+    const el = document.getElementById('ft-passo' + i);
+    if (el) el.style.display = i === n ? '' : 'none';
+  });
+}
+
+/** Reduz a foto no aparelho: lado maior ~1600px, JPEG (a Vercel aceita até 4,5 MB por envio) */
+async function reduzirFoto(file) {
+  let fonte;
+  try {
+    fonte = await createImageBitmap(file, { imageOrientation: 'from-image' });
+  } catch (_) {
+    fonte = await new Promise((ok, erro) => {
+      const img = new Image();
+      img.onload = () => ok(img);
+      img.onerror = () => erro(new Error('imagem inválida'));
+      img.src = URL.createObjectURL(file);
+    });
+  }
+  const w0 = fonte.width, h0 = fonte.height;
+  const esc_ = Math.min(1, FOTO_MAX_LADO / Math.max(w0, h0));
+  const w = Math.round(w0 * esc_), h = Math.round(h0 * esc_);
+  const cv = document.createElement('canvas');
+  cv.width = w; cv.height = h;
+  const ctx = cv.getContext('2d');
+  ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, w, h);
+  ctx.drawImage(fonte, 0, 0, w, h);
+  let q = 0.82, url = cv.toDataURL('image/jpeg', q);
+  while (url.length > 1100 * 1024 && q > 0.45) { q -= 0.12; url = cv.toDataURL('image/jpeg', q); }
+  return url;
+}
+
+async function fotoAdicionar(input) {
+  const arqs = [...(input.files || [])];
+  input.value = '';
+  if (!arqs.length) return;
+  const vagas = FOTO_MAX_QTD - _fotoArquivos.length;
+  if (vagas <= 0) { toast(`⚠️ Máximo de ${FOTO_MAX_QTD} fotos por envio.`, 'warn'); return; }
+  if (arqs.length > vagas) toast(`⚠️ Só cabem mais ${vagas} foto(s) — o resto foi ignorado.`, 'warn');
+  const info = document.getElementById('ft-fotos-info');
+  for (const f of arqs.slice(0, vagas)) {
+    if (info) info.textContent = '⏳ Preparando foto...';
+    try {
+      _fotoArquivos.push({ nome: f.name || 'foto', dataUrl: await reduzirFoto(f) });
+    } catch (e) {
+      toast('❌ Não consegui abrir a imagem ' + (f.name || ''), 'err');
+    }
+  }
+  _fotoRenderMiniaturas();
+}
+
+function fotoRemover(i) {
+  _fotoArquivos.splice(i, 1);
+  _fotoRenderMiniaturas();
+}
+
+function _fotoRenderMiniaturas() {
+  const el = document.getElementById('ft-miniaturas');
+  if (el) el.innerHTML = _fotoArquivos.map((f, i) =>
+    `<div class="ft-mini"><img src="${f.dataUrl}" alt="foto ${i + 1}"><button class="btn bc bxs" onclick="fotoRemover(${i})">✕</button></div>`).join('');
+  const kb = Math.round(_fotoArquivos.reduce((a, f) => a + f.dataUrl.length * 0.75, 0) / 1024);
+  const info = document.getElementById('ft-fotos-info');
+  if (info) info.textContent = _fotoArquivos.length
+    ? `${_fotoArquivos.length}/${FOTO_MAX_QTD} foto(s) · ${kb} KB no total`
+    : `Nenhuma foto ainda (máximo ${FOTO_MAX_QTD}).`;
+  const btn = document.getElementById('ft-btn-ler');
+  if (btn) btn.disabled = !_fotoArquivos.length;
+}
+
+async function fotoLer() {
+  _fotoSetor = document.getElementById('ft-setor').value;
+  _fotoData  = document.getElementById('ft-data').value;
+  if (!podeVerSetor(_fotoSetor)) { toast('🚫 Setor fora das suas permissões.', 'err'); return; }
+  _fotoItens = listaFolhaCobranca(_fotoSetor, _fotoData);
+  if (!_fotoItens.length) { toast('🎉 Nenhum cliente em aberto neste setor até esta data.', 'warn'); return; }
+  if (!_fotoArquivos.length) { toast('⚠️ Adicione pelo menos 1 foto.', 'err'); return; }
+
+  _fotoPasso(2);
+  try {
+    const ctrl = new AbortController();
+    const tid = setTimeout(() => ctrl.abort(), 90000);
+    const r = await fetch(LER_FOLHA_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        codigos: _fotoItens.map(it => it.c.id),
+        fotos:   _fotoArquivos.map(f => f.dataUrl),
+      }),
+      signal: ctrl.signal,
+    });
+    clearTimeout(tid);
+    const json = await r.json().catch(() => ({ ok: false, erro: 'resposta inválida (' + r.status + ')' }));
+    if (!r.ok || !json.ok) throw new Error(json.erro || ('erro ' + r.status));
+    _fotoLeitura = json;
+  } catch (e) {
+    _fotoPasso(1);
+    toast('❌ ' + (e.name === 'AbortError' ? 'A leitura demorou demais. Tente de novo.' : e.message), 'err');
+    return;
+  }
+  _fotoRenderRevisao();
+  _fotoPasso(3);
+}
+
+function _fotoRenderRevisao() {
+  const lidos = new Map((_fotoLeitura.marcados || []).map(m => [String(m.codigo).toUpperCase(), m]));
+  const naLista = new Set(_fotoItens.map(it => String(it.c.id).toUpperCase()));
+
+  const fora = [...lidos.values()].filter(m => !naLista.has(String(m.codigo).toUpperCase()));
+  const avisoFora = fora.length
+    ? `<div class="ft-aviso">⚠️ Lido na foto mas <strong>não está na lista</strong> deste setor/data: ${fora.map(m => esc(m.codigo)).join(', ')} — confira na folha.</div>`
+    : '';
+
+  const linhas = _fotoItens.map((it, i) => {
+    const c = it.c;
+    const m = lidos.get(String(c.id).toUpperCase());
+    const duvida = m && m.confianca !== 'alta';
+    const marcado = m && !duvida;
+    const jaPago = it.meses.filter(ms => PAG.some(p => p.cid === c.id && parseInt(p.mesPago) === ms.ym));
+    const meses = it.meses.length > 1 ? ` · ${it.meses.length} meses (${it.meses.map(ms => lbM(ms.ym)).join(', ')})` : ` · ${lbM(it.meses[0].ym)}`;
+    return `<label class="ft-item${duvida ? ' duvida' : ''}${marcado ? ' ok' : ''}">
+      <input type="checkbox" data-i="${i}" ${marcado ? 'checked' : ''} onchange="_fotoAtualizaResumo()">
+      <span class="ft-ord">${it.ordem}</span>
+      <span class="ft-txt"><strong>${esc(c.id)}</strong> — ${esc(c.nome)}
+        <small>${esc(_ruaNum(c))}${meses} · ${fR(it.valorTotal)}</small>
+        ${duvida ? `<small class="ft-warn">⚠️ Leitura duvidosa (confiança ${esc(m.confianca)}) — confira na folha antes de marcar</small>` : ''}
+        ${jaPago.length ? `<small class="ft-warn">⚠️ Já existe pagamento de ${jaPago.map(ms => lbM(ms.ym)).join(', ')}</small>` : ''}
+      </span>
+    </label>`;
+  }).join('');
+
+  const usados = (_fotoLeitura.fotos || []).map(f => `Foto ${f.foto}: ${f.usado === 'sonnet' ? 'revisada pelo Sonnet' : 'Haiku'}`).join(' · ');
+  document.getElementById('ft-revisao').innerHTML =
+    `<div class="ft-meta">${esc(_fotoSetor)} · vencimento até ${_fmtData(_dataDeISO(_fotoData))} · ${esc(usados)}</div>`
+    + avisoFora + linhas;
+  _fotoAtualizaResumo();
+}
+
+function _fotoSelecionados() {
+  return [...document.querySelectorAll('#ft-revisao input[type=checkbox]:checked')]
+    .map(cb => _fotoItens[parseInt(cb.dataset.i)]).filter(Boolean);
+}
+
+function _fotoAtualizaResumo() {
+  const sel = _fotoSelecionados();
+  const total = sel.reduce((a, it) => a + it.valorTotal, 0);
+  const nMeses = sel.reduce((a, it) => a + it.meses.length, 0);
+  document.querySelectorAll('#ft-revisao .ft-item').forEach(el => {
+    el.classList.toggle('sel', el.querySelector('input').checked);
+  });
+  document.getElementById('ft-resumo').innerHTML = sel.length
+    ? `<strong>${sel.length} cliente(s), total ${fR(total)}</strong>${nMeses > sel.length ? ` (${nMeses} mensalidades)` : ''}<br><small>${sel.map(it => esc(it.c.nome)).join(', ')}</small>`
+    : 'Nenhum cliente marcado.';
+  document.getElementById('ft-btn-confirmar').disabled = !sel.length;
+}
+
+/**
+ * Grava a baixa com o MESMO núcleo de pagamento do app (registrarPagamento,
+ * cobrancas.js): uma mensalidade por mês em aberto que aparece na folha,
+ * cada uma com o valor do cliente e avançando o vencimento 1 mês.
+ */
+async function fotoConfirmarBaixa() {
+  if (_baixando) return;
+  const sel = _fotoSelecionados();
+  if (!sel.length) return;
+  const total = sel.reduce((a, it) => a + it.valorTotal, 0);
+  if (!confirm(`Confirmar baixa de ${sel.length} cliente(s), total ${fR(total)}?`)) return;
+
+  _baixando = true;
+  _fotoPasso(4);
+  const prog = document.getElementById('ft-progresso');
+  const falhas = [];
+  let n = 0;
+  for (const it of sel) {
+    n++;
+    prog.textContent = `⏳ Gravando ${n}/${sel.length}: ${it.c.nome}...`;
+    for (const ms of it.meses) {
+      const c = CLI.find(x => x.id === it.c.id && x.setor === it.c.setor) || it.c;
+      const { envio } = registrarPagamento(c, ms.ym, formaPadraoPagamento(c), 'Baixa pela folha (foto)');
+      const r = await envio;
+      if (!r || r.ok === false) falhas.push(`${it.c.nome} (${lbM(ms.ym)})`);
+    }
+  }
+  renderAll();
+
+  // Confere direto no servidor se o vencimento avançou
+  prog.textContent = '🔎 Conferindo no servidor...';
+  let confirmados = 0, conferiu = false;
+  try {
+    const r = await _tentarSheetReq(SCRIPT_URL, 'getClientes', { setor: _fotoSetor });
+    const arr = extArr(r, 'data', 'clientes', 'rows', 'result');
+    if (arr) {
+      conferiu = true;
+      const pvServ = new Map(arr.map(x => [String(x.id), parseInt(x.proxVenc) || 0]));
+      sel.forEach(it => {
+        const esperado = addM(it.meses[it.meses.length - 1].ym, 1);
+        if ((pvServ.get(String(it.c.id)) || 0) >= esperado) confirmados++;
+      });
+    }
+  } catch (_) { /* sem conexão: avisa abaixo */ }
+  _baixando = false;
+
+  document.getElementById('ft-final').innerHTML =
+    `<div class="ft-ok">✅ Baixa feita em <strong>${sel.length}</strong> cliente(s) · ${fR(total)}</div>`
+    + (conferiu
+      ? `<div class="ft-meta">${confirmados === sel.length ? '☁️ Confirmado no servidor para todos.' : `⚠️ Servidor confirmou ${confirmados} de ${sel.length} — sincronize e confira.`}</div>`
+      : '<div class="ft-meta">⚠️ Não foi possível conferir no servidor agora (sem conexão).</div>')
+    + (falhas.length ? `<div class="ft-aviso">⚠️ Falha ao enviar: ${falhas.map(esc).join(', ')}</div>` : '')
+    + `<div class="fact">
+        <button class="btn bp" onclick="fecharFotoModal();abrirFolhaModal('folha', '${esc(_fotoSetor)}')">🖨️ Imprimir folha nova</button>
+        ${modeloReciboPapel(_fotoSetor) ? `<button class="btn bp" onclick="fecharFotoModal();abrirFolhaModal('recibos', '${esc(_fotoSetor)}')">🧾 Imprimir recibos</button>` : ''}
+        <button class="btn bc" onclick="fecharFotoModal()">Fechar</button>
+      </div>`;
+  prog.textContent = '';
+  toast(`✅ Baixa feita em ${sel.length} cliente(s)`);
+}
+
+// ─────────────────────────────────────────────
 // MODELOS DE RECIBO DE PAPEL POR PROPRIETÁRIO
 // Chave = usuário do dono do setor. Cada modelo tem: nome, porFolha e
 // render(recibos) → HTML das páginas A4. Para um novo dono ter o próprio
@@ -247,4 +499,5 @@ function atualizarBotoesFolha() {
 
 document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('folhabg')?.addEventListener('click', function (e) { if (e.target === this) fecharFolhaModal(); });
+  document.getElementById('fotobg')?.addEventListener('click', function (e) { if (e.target === this) fecharFotoModal(); });
 });

@@ -23,3 +23,6 @@ CobraSetor_PRD_ClaudeCode.md
 
 # PDFs (modelos de recibo etc. — nunca vão para o GitHub público)
 *.pdf
+
+# Dependências da função da Vercel (instaladas no deploy)
+node_modules/

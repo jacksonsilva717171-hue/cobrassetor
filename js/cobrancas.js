@@ -298,11 +298,7 @@ function openPag(id) {
   pagId  = id;
   pagVoltar = null;
 
-  // Forma padrão: cobrador não pode usar pix_auto
-  const formaIni = (c.formaPadrao === 'pix_auto' && USER.role === 'cobrador')
-    ? 'pix_presencial'
-    : (c.formaPadrao || 'dinheiro');
-  pagForma = formaIni;
+  pagForma = formaPadraoPagamento(c);
 
   // Info do cliente
   document.getElementById('p-info').innerHTML = `
@@ -317,12 +313,7 @@ function openPag(id) {
   const yh  = YM(new Date());
   const dh  = new Date().getDate();
   const vd  = parseInt(c.vencDia) || 1;
-  // Avança o mês padrão até que pagar esse mês tire o cliente da lista de atraso
-  let defaultMes = pv;
-  for (let m = pv; m <= addM(yh, 2); m = addM(m, 1)) {
-    const testPv = addM(m, 1);
-    if (testPv > yh || (testPv === yh && vd >= dh)) { defaultMes = m; break; }
-  }
+  const defaultMes = mesPadraoPagamento(c);
   pagMes = defaultMes;
   let opts = [pv, addM(pv,1), addM(pv,2), addM(pv,3)];
   if (!opts.includes(defaultMes)) opts.push(defaultMes);
@@ -433,21 +424,70 @@ async function confirmarPag() {
     }
   }
 
+  // Grava (local na hora + Sheets em background) — mesmo núcleo da baixa em lote
+  const { pag } = registrarPagamento(c, pagMes, pagForma, obs);
+
+  // Fecha modal e atualiza lista na hora
+  if (btn) { btn.disabled = false; btn.textContent = '✅ Confirmar Pagamento'; }
+  _pagando = false;  // libera guard
+  closePag();
+  renderAll();
+  toast(`✅ ${c.nome} — Pago! Próx: Dia ${c.vencDia}/${lbM(novoPv)}`);
+
+  // Abre modal de recibo para o cobrador enviar ao cliente
+  openRecibo(c, pag);
+}
+
+// ─────────────────────────────────────────────
+// NÚCLEO DO PAGAMENTO — usado pelo modal (confirmarPag) e pela baixa em lote
+// da folha (folha.js). Uma única regra de valor e de avanço do vencimento:
+// valor = mensalidade do cliente; novo vencimento = mês pago + 1.
+// ─────────────────────────────────────────────
+
+/** Forma padrão: a do cadastro; cobrador não pode usar pix_auto */
+function formaPadraoPagamento(c) {
+  return (c.formaPadrao === 'pix_auto' && USER.role === 'cobrador')
+    ? 'pix_presencial'
+    : (c.formaPadrao || 'dinheiro');
+}
+
+/** Mês sugerido no modal: avança até que pagar esse mês tire o cliente do atraso */
+function mesPadraoPagamento(c) {
+  const pv  = parseInt(c.proxVenc) || YM(new Date());
+  const yh  = YM(new Date());
+  const dh  = new Date().getDate();
+  const vd  = parseInt(c.vencDia) || 1;
+  let defaultMes = pv;
+  for (let m = pv; m <= addM(yh, 2); m = addM(m, 1)) {
+    const testPv = addM(m, 1);
+    if (testPv > yh || (testPv === yh && vd >= dh)) { defaultMes = m; break; }
+  }
+  return defaultMes;
+}
+
+/**
+ * Registra o pagamento do mês `mes`: atualiza o estado local na hora (UI
+ * otimista), bloqueia o sync por 15s e envia addPagamento ao Sheets.
+ * Retorna { pag, envio } — envio é a Promise do POST (o modal não espera;
+ * a baixa em lote espera para confirmar cada gravação).
+ */
+function registrarPagamento(c, mes, forma, obs) {
+  const novoPv = parseInt(addM(mes, 1));
   const pag = {
     cid:     c.id,
     nome:    c.nome,
     setor:   c.setor,
     valor:   c.valor,
-    forma:   pagForma,
-    mesPago: parseInt(pagMes),
+    forma,
+    mesPago: parseInt(mes),
     novoPv,
     data:    new Date().toISOString(),
     vigia:   USER.usuario,
-    obs,
+    obs:     obs || '',
   };
 
   // ── Atualiza estado local imediatamente (UI otimista) ──
-  const idx = CLI.findIndex(x => x.id === pagId);
+  const idx = CLI.findIndex(x => x.id === c.id);
   if (idx >= 0) CLI[idx] = { ...CLI[idx], proxVenc: parseInt(novoPv) };
   localStorage.setItem('eps_cli', JSON.stringify(CLI));
 
@@ -467,18 +507,9 @@ async function confirmarPag() {
   sessionStorage.setItem('bloqSync_exp', _bloqExp.toString());
   setTimeout(() => { bloqSync = false; sessionStorage.removeItem('bloqSync_exp'); }, 15000);
 
-  // Fecha modal e atualiza lista na hora
-  if (btn) { btn.disabled = false; btn.textContent = '✅ Confirmar Pagamento'; }
-  _pagando = false;  // libera guard
-  closePag();
-  renderAll();
-  toast(`✅ ${c.nome} — Pago! Próx: Dia ${c.vencDia}/${lbM(novoPv)}`);
-
-  // Abre modal de recibo para o cobrador enviar ao cliente
-  openRecibo(c, pag);
-
   // Envia para Sheets em background (não bloqueia a UI)
-  sheetPost('addPagamento', pag).catch(() => {});
+  const envio = sheetPost('addPagamento', pag).catch(() => ({ ok: false, erro: 'falha de rede' }));
+  return { pag, envio };
 }
 
 // ─────────────────────────────────────────────

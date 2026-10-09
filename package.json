@@ -1,0 +1,8 @@
+{
+  "name": "cobrassetor",
+  "private": true,
+  "description": "CobraSetor — app estático + função /api/ler-folha (Vercel)",
+  "dependencies": {
+    "@anthropic-ai/sdk": "0.127.0"
+  }
+}

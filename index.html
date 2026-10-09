@@ -1006,6 +1006,28 @@ textarea { resize: vertical; min-height: 60px; }
 .fl-vazio { padding: 10mm; text-align: center; font-size: 12pt; }
 .fl-total { display: flex; justify-content: space-between; border-top: 2.5px solid #000; margin-top: 3mm; padding-top: 2mm; font-size: 12pt; }
 
+/* Baixa pela foto */
+.ft-upl { position: relative; overflow: hidden; cursor: pointer; }
+.ft-upl input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+.ft-miniaturas { display: flex; gap: 8px; flex-wrap: wrap; }
+.ft-mini { position: relative; width: 72px; height: 96px; border-radius: var(--radius); overflow: hidden; border: 1px solid var(--border); animation: fadeUp .2s ease both; }
+.ft-mini img { width: 100%; height: 100%; object-fit: cover; }
+.ft-mini .btn { position: absolute; top: 3px; right: 3px; }
+.ft-meta { font-size: 11px; color: var(--text2); margin: 8px 0; }
+.ft-carregando { text-align: center; padding: 30px 10px; color: var(--text2); }
+.ft-spin { width: 34px; height: 34px; margin: 0 auto 12px; border: 3px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: ftGira .8s linear infinite; }
+@keyframes ftGira { to { transform: rotate(360deg); } }
+.ft-revisao { max-height: 46vh; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; }
+.ft-item { display: flex; align-items: flex-start; gap: 9px; padding: 9px 10px; border: 1px solid var(--border); border-left: 3px solid var(--border); border-radius: var(--radius); background: var(--bg3); cursor: pointer; transition: border-color var(--transition), background var(--transition); font-size: 12px; color: var(--text); letter-spacing: 0; font-weight: 400; }
+.ft-item input { width: 18px; height: 18px; flex-shrink: 0; margin-top: 1px; accent-color: var(--success); }
+.ft-item.sel { border-left-color: var(--success); background: rgba(0,232,122,.06); }
+.ft-item.duvida { border-color: rgba(255,176,32,.5); border-left-color: var(--warn); background: rgba(255,176,32,.08); }
+.ft-ord { font-size: 10px; color: var(--text3); min-width: 16px; margin-top: 2px; }
+.ft-txt small { display: block; color: var(--text2); margin-top: 2px; }
+.ft-txt small.ft-warn, .ft-aviso { color: var(--warn); }
+.ft-aviso { background: rgba(255,176,32,.08); border: 1px solid rgba(255,176,32,.3); border-radius: var(--radius); padding: 8px 10px; font-size: 12px; margin: 6px 0; }
+.ft-ok { font-family: 'Rajdhani', sans-serif; font-size: 20px; color: var(--success); margin: 6px 0; }
+
 @media print {
   body.imprimindo { background: #fff !important; }
   body.imprimindo > *:not(#print-view) { display: none !important; }
@@ -1833,6 +1855,56 @@ textarea { resize: vertical; min-height: 60px; }
     <div class="fact">
       <button class="btn bc" onclick="fecharFolhaModal()">Cancelar</button>
       <button class="btn bp" id="fo-btn-ok" onclick="confirmarFolhaModal()">🖨️ Gerar folha</button>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════
+     MODAL — BAIXA PELA FOTO DA FOLHA
+════════════════════════════════════════════ -->
+<div class="mbg" id="fotobg">
+  <div class="modal" style="max-width:560px;">
+    <h2>📷 BAIXA PELA FOTO DA FOLHA</h2>
+
+    <div id="ft-passo1">
+      <div class="fgrid" style="margin-bottom:12px;">
+        <div class="fg"><label>Setor</label><select id="ft-setor"></select></div>
+        <div class="fg"><label>Vencimento até (o mesmo da folha impressa)</label><input type="date" id="ft-data"></div>
+      </div>
+      <label>Fotos da folha marcada pelo vigilante</label>
+      <div class="frow" style="margin:8px 0;">
+        <label class="btn bi bsm ft-upl">📷 Tirar foto
+          <input type="file" accept="image/*" capture="environment" onchange="fotoAdicionar(this)">
+        </label>
+        <label class="btn bc bsm ft-upl">🖼️ Escolher arquivo
+          <input type="file" accept="image/*" multiple onchange="fotoAdicionar(this)">
+        </label>
+      </div>
+      <div class="ft-miniaturas" id="ft-miniaturas"></div>
+      <div class="ft-meta" id="ft-fotos-info"></div>
+      <div class="fact">
+        <button class="btn bc" onclick="fecharFotoModal()">Cancelar</button>
+        <button class="btn bp" id="ft-btn-ler" onclick="fotoLer()" disabled>🔎 Ler folha</button>
+      </div>
+    </div>
+
+    <div id="ft-passo2" style="display:none;">
+      <div class="ft-carregando"><div class="ft-spin"></div>Lendo as marcações da folha...<br><small>Pode levar até 1 minuto.</small></div>
+    </div>
+
+    <div id="ft-passo3" style="display:none;">
+      <div class="ft-meta">Os encontrados já vêm marcados. Em <span style="color:var(--warn);">amarelo</span>: leitura duvidosa — confira na folha. Marque ou desmarque à vontade.</div>
+      <div id="ft-revisao" class="ft-revisao"></div>
+      <div class="modal-info" id="ft-resumo" style="margin-top:12px;"></div>
+      <div class="fact">
+        <button class="btn bc" onclick="_fotoPasso(1)">← Voltar</button>
+        <button class="btn bs" id="ft-btn-confirmar" onclick="fotoConfirmarBaixa()">✅ Confirmar baixa</button>
+      </div>
+    </div>
+
+    <div id="ft-passo4" style="display:none;">
+      <div class="ft-meta" id="ft-progresso"></div>
+      <div id="ft-final"></div>
     </div>
   </div>
 </div>
