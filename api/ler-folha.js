@@ -145,6 +145,8 @@ module.exports = async function handler(req, res) {
   if (typeof body === 'string') { try { body = JSON.parse(body); } catch { body = null; } }
   const fotos   = body && Array.isArray(body.fotos) ? body.fotos : [];
   const codigos = body && Array.isArray(body.codigos) ? body.codigos : [];
+  // Diagnóstico: roda o Sonnet mesmo quando o Haiku está confiante (para comparar)
+  const forcarRevisao = !!(body && body.forcarRevisao === true);
 
   if (!fotos.length || fotos.length > MAX_FOTOS) {
     res.status(400).json({ ok: false, erro: `Envie de 1 a ${MAX_FOTOS} fotos.` });
@@ -177,7 +179,7 @@ module.exports = async function handler(req, res) {
     const porFoto = await Promise.all(imagens.map(async (b64, i) => {
       const haiku = await _lerFoto(client, MODELO_RAPIDO, b64, lista);
       let sonnet = null;
-      if (_precisaRevisao(haiku, validos)) {
+      if (forcarRevisao || _precisaRevisao(haiku, validos)) {
         sonnet = await _lerFoto(client, MODELO_REVISAO, b64, lista);
       }
       return { foto: i + 1, haiku, sonnet, usado: sonnet ? 'sonnet' : 'haiku' };
