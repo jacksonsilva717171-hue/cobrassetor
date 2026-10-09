@@ -20,3 +20,6 @@ CobraSetor_PRD_ClaudeCode.md
 
 # Listas de clientes (planilhas com dados pessoais) — nunca vão para o GitHub público
 *.xlsx
+
+# PDFs (modelos de recibo etc. — nunca vão para o GitHub público)
+*.pdf
