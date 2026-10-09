@@ -257,6 +257,7 @@ function _renderCardPendente(c) {
     <div class="cbtns">
       ${btnPago}
       ${btnRem}
+      ${typeof botoesWhatsApp === 'function' ? botoesWhatsApp(c) : ''}
       ${btnObs}
       ${btnEdit}
     </div>

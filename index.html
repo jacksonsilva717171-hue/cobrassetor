@@ -1054,6 +1054,23 @@ textarea { resize: vertical; min-height: 60px; }
 .re-clareza { left: 3mm; top: 56.2mm; font-size: 6.6pt; font-weight: 700; font-style: italic; }
 .re-assin { left: 62mm; right: 3mm; top: 56.6mm; border-top: .3mm solid #1a1a1a; text-align: center; padding-left: 18mm; font-size: 7.4pt; font-weight: 900; font-style: italic; line-height: 1.2; }
 
+/* WhatsApp na cobrança */
+.bzap { background: rgba(37,211,102,.14); color: #25d366; border: 1px solid rgba(37,211,102,.35); text-decoration: none; }
+.bzap:hover { background: rgba(37,211,102,.25); transform: translateY(-1px); }
+.bzap-off { background: var(--bg3); color: var(--text3); border: 1px solid var(--border); cursor: not-allowed; }
+.zap-semtel { font-size: 10px; color: var(--text3); text-align: center; }
+
+/* Configurações */
+.aj-card { margin-bottom: 16px; animation: fadeUp .3s ease both; }
+.aj-corpo { padding: 16px; }
+.aj-vars { font-size: 11px; color: var(--text2); margin: 14px 0 10px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.aj-var { background: rgba(255,107,0,.12); color: var(--accent3); border: 1px solid rgba(255,107,0,.3); border-radius: 6px; padding: 2px 7px; font-family: monospace; cursor: pointer; transition: background var(--transition); }
+.aj-var:hover { background: rgba(255,107,0,.25); }
+.aj-var:active { transform: scale(.95); }
+.aj-previa { background: #0b141a; border-radius: var(--radius); padding: 8px 10px; margin-top: 6px; }
+.aj-previa small { color: var(--text3); font-size: 10px; }
+.aj-previa div { white-space: pre-wrap; font-size: 12px; color: #e9edef; background: #005c4b; border-radius: 8px; padding: 7px 9px; margin-top: 4px; line-height: 1.45; }
+
 /* Baixa pela foto */
 .ft-upl { position: relative; overflow: hidden; cursor: pointer; }
 .ft-upl input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
@@ -1204,6 +1221,9 @@ textarea { resize: vertical; min-height: 60px; }
     </div>
     <div class="ni" id="ni-proprietarios" onclick="goTo('proprietarios',this)">
       <span class="ico">👔</span>Proprietários
+    </div>
+    <div class="ni" id="ni-ajustes" onclick="goTo('ajustes',this)" style="display:none;">
+      <span class="ico">⚙️</span>Configurações
     </div>
     <div class="ni-sep"></div>
     <div class="ni" id="ni-sair" onclick="sair()">
@@ -1624,6 +1644,60 @@ textarea { resize: vertical; min-height: 60px; }
     </div>
   </div><!-- /proprietarios -->
 
+  <!-- ── CONFIGURAÇÕES (proprietário + admin) ── -->
+  <div class="sec" id="sec-ajustes">
+    <div class="ph">
+      <div class="ptitle">Configurações <span>de Cobrança</span></div>
+    </div>
+
+    <div class="tcard aj-card">
+      <div class="thead2"><div class="ttitle">💬 COBRANÇA PELO WHATSAPP</div></div>
+      <div class="aj-corpo">
+        <div class="fg" id="aj-prop-wrap" style="margin-bottom:12px;display:none;">
+          <label>Proprietário</label>
+          <select id="aj-prop" onchange="ajTrocarProp(this.value)"></select>
+        </div>
+        <div class="fgrid">
+          <div class="fg"><label>Chave Pix</label><input id="aj-pix" placeholder="CPF, CNPJ, telefone, e-mail ou chave aleatória" oninput="ajPrevia()"></div>
+          <div class="fg"><label>Nome da empresa na mensagem</label><input id="aj-empresa" placeholder="Ex.: Elite Segurança" oninput="ajPrevia()"></div>
+        </div>
+        <div class="aj-vars">Variáveis (toque para inserir):
+          <span class="aj-var" onclick="ajInserirVar(_ajUltimoCampo,'{nome}')">{nome}</span>
+          <span class="aj-var" onclick="ajInserirVar(_ajUltimoCampo,'{valor}')">{valor}</span>
+          <span class="aj-var" onclick="ajInserirVar(_ajUltimoCampo,'{vencimento}')">{vencimento}</span>
+          <span class="aj-var" onclick="ajInserirVar(_ajUltimoCampo,'{chavepix}')">{chavepix}</span>
+          <span class="aj-var" onclick="ajInserirVar(_ajUltimoCampo,'{empresa}')">{empresa}</span>
+        </div>
+        <div class="fgrid">
+          <div class="fg">
+            <label>Mensagem — <span style="color:var(--warn);">⚡ vence hoje</span></label>
+            <textarea id="aj-msg-hoje" rows="7" oninput="ajPrevia()" onfocus="_ajUltimoCampo=this.id"></textarea>
+            <div class="aj-previa"><small>Prévia</small><div id="aj-previa-hoje"></div></div>
+          </div>
+          <div class="fg">
+            <label>Mensagem — <span style="color:var(--danger);">🔴 em atraso desde {vencimento}</span></label>
+            <textarea id="aj-msg-atraso" rows="7" oninput="ajPrevia()" onfocus="_ajUltimoCampo=this.id"></textarea>
+            <div class="aj-previa"><small>Prévia</small><div id="aj-previa-atraso"></div></div>
+          </div>
+        </div>
+        <div class="ft-meta" id="aj-status"></div>
+        <div class="fact">
+          <button class="btn bc" onclick="ajRestaurarPadrao()">↩️ Textos padrão</button>
+          <button class="btn bp" id="aj-btn-salvar" onclick="ajSalvar()">💾 Salvar</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="tcard aj-card" id="aj-backup-card" style="display:none;">
+      <div class="thead2"><div class="ttitle">🗄️ BACKUP DOS CLIENTES (somente administrador)</div></div>
+      <div class="aj-corpo">
+        <div style="font-size:12px;color:var(--text2);margin-bottom:10px;">Gera na hora um arquivo .xlsx com todos os clientes de todos os setores e a aba PAGAMENTOS (a mesma do backup automático).</div>
+        <button class="btn bp" id="aj-btn-backup" onclick="baixarBackupAgora()">🗄️ Baixar backup agora</button>
+        <div class="ft-meta" id="aj-backup-info"></div>
+      </div>
+    </div>
+  </div><!-- /ajustes -->
+
 </main><!-- /main-app -->
 
 
@@ -1987,6 +2061,7 @@ textarea { resize: vertical; min-height: 60px; }
 <script src="js/relatorios.js"></script>
 <script src="js/recibo.js"></script>
 <script src="js/folha.js"></script>
+<script src="js/ajustes.js"></script>
 
 </body>
 </html>

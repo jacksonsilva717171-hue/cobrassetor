@@ -841,6 +841,7 @@ function goTo(sec, el) {
     case 'relatorio':      renderRel(); break;
     case 'cobradores':     renderCobradores(); break;
     case 'proprietarios':  renderProprietarios(); break;
+    case 'ajustes':        renderAjustes(); break;
   }
 }
 

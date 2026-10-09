@@ -78,6 +78,7 @@ function doGet(e) {
     else if (acao === 'criarClienteEm') resultado = criarClienteEm(e.parameter.idPlanilha, e.parameter.id, e.parameter.novoId);
     else if (acao === 'repararSetorVazio') resultado = repararSetorVazio();
     else if (acao === 'testeCadastroSetores') resultado = testeCadastroSetores();
+    else if (acao === 'getConfigProp')   resultado = getConfigProp(e.parameter.usuario);
     else resultado = { ok: false, erro: 'Ação desconhecida: ' + acao };
   } catch(err) { resultado = { ok: false, erro: err.toString() }; }
   return jsonResponse(resultado);
@@ -555,6 +556,7 @@ function doPost(e) {
     else if (acao === 'addPagamento')          resultado = addPagamento(body, etapas);
     else if (acao === 'confirmarPagamentoPix') resultado = confirmarPagamentoPix(body, etapas);
     else if (acao === 'importarLoteSetores')   resultado = importarLoteSetores(body);
+    else if (acao === 'salvarConfigProp')      resultado = salvarConfigProp(body);
     else { resultado = { ok: false, erro: 'Ação desconhecida: ' + acao }; etapas.push('ação desconhecida'); }
     etapas.push('resultado final: ' + JSON.stringify(resultado));
   } catch(err) {
@@ -2279,4 +2281,62 @@ function investigarSeteClientesPreto() {
 
   Logger.log('==================================================');
   Logger.log('Investigação concluída pros 7 clientes.');
+}
+
+// ================================================
+// CONFIGURAÇÕES POR PROPRIETÁRIO (CobraSetor — botões de WhatsApp)
+// Chave Pix, nome da empresa e textos das mensagens de cobrança, salvos
+// na aba CONFIG_PROPRIETARIOS — assim valem no celular e no notebook.
+// ================================================
+const SHEET_CONFIG_PROP = 'CONFIG_PROPRIETARIOS';
+const COL_CONFIG_PROP   = ['usuario', 'chavePix', 'empresa', 'msgHoje', 'msgAtraso', 'atualizadoEm', 'atualizadoPor'];
+
+function getConfigProp(usuario) {
+  usuario = String(usuario || '').trim();
+  if (!usuario) return { ok: false, erro: 'usuario não informado' };
+  const sheet = getOrCreateSheet(SHEET_CONFIG_PROP, COL_CONFIG_PROP);
+  const rows  = sheet.getDataRange().getValues();
+  const header = rows[0];
+  const cU = colIdx(header, 'usuario');
+  for (let i = 1; i < rows.length; i++) {
+    if (String(rows[i][cU]).trim() === usuario) {
+      const obj = rowToObj(header, rows[i]);
+      if (obj.atualizadoEm instanceof Date) obj.atualizadoEm = obj.atualizadoEm.toISOString();
+      return { ok: true, data: obj };
+    }
+  }
+  return { ok: true, data: null };
+}
+
+function salvarConfigProp(dados) {
+  const usuario = String((dados && dados.usuario) || '').trim();
+  if (!usuario || usuario.length > 40) return { ok: false, erro: 'usuario inválido' };
+  const lim = (v, n) => String(v == null ? '' : v).slice(0, n);
+  const reg = {
+    usuario:       usuario,
+    chavePix:      lim(dados.chavePix, 120),
+    empresa:       lim(dados.empresa, 80),
+    msgHoje:       lim(dados.msgHoje, 1500),
+    msgAtraso:     lim(dados.msgAtraso, 1500),
+    atualizadoEm:  new Date().toISOString(),
+    atualizadoPor: lim(dados.atualizadoPor, 40),
+  };
+  return comLockDeEscrita(() => {
+    const sheet  = getOrCreateSheet(SHEET_CONFIG_PROP, COL_CONFIG_PROP);
+    sheet.getRange(1, 1, sheet.getMaxRows(), COL_CONFIG_PROP.length).setNumberFormat('@'); // texto puro (chave Pix com zeros à esquerda)
+    const rows   = sheet.getDataRange().getValues();
+    const header = rows[0];
+    const cU = colIdx(header, 'usuario');
+    const linha = header.map(h => reg[String(h).trim()] !== undefined ? reg[String(h).trim()] : '');
+    for (let i = 1; i < rows.length; i++) {
+      if (String(rows[i][cU]).trim() === usuario) {
+        sheet.getRange(i + 1, 1, 1, linha.length).setValues([linha]);
+        SpreadsheetApp.flush();
+        return { ok: true, data: reg };
+      }
+    }
+    sheet.appendRow(linha);
+    SpreadsheetApp.flush();
+    return { ok: true, data: reg };
+  });
 }

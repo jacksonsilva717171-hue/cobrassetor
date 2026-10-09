@@ -67,6 +67,9 @@ function iniciarApp() {
   aplicarPermissoes();
   carregarLogo();
 
+  // Pix / empresa / mensagens de cobrança por proprietário (ajustes.js)
+  if (typeof carregarConfigsProp === 'function') carregarConfigsProp();
+
   if (USER.role === 'admin') {
     // Admin vai direto para proprietários
     document.getElementById('sec-proprietarios').classList.add('active');
@@ -174,6 +177,9 @@ function aplicarPermissoes() {
   if (niRel)   niRel.style.display   = isCobr  ? 'none' : '';
   if (niCobrs) niCobrs.style.display = isAdmin  ? 'none' : (isProp ? '' : 'none');
   if (niProps) niProps.style.display = isAdmin  ? '' : 'none';
+  // Configurações (Pix/mensagens; backup só admin): proprietário e admin
+  const niAjustes = document.getElementById('ni-ajustes');
+  if (niAjustes) niAjustes.style.display = isCobr ? 'none' : '';
 
   // Botão + Novo Cliente: cobrador não pode cadastrar
   const btnN   = document.getElementById('btn-novo-cli');
