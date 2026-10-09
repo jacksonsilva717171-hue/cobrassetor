@@ -79,6 +79,8 @@ function doGet(e) {
     else if (acao === 'repararSetorVazio') resultado = repararSetorVazio();
     else if (acao === 'testeCadastroSetores') resultado = testeCadastroSetores();
     else if (acao === 'getConfigProp')   resultado = getConfigProp(e.parameter.usuario);
+    else if (acao === 'gerarBackup')     resultado = baixarBackupApp();
+    else if (acao === 'limparTesteCobraSetor') resultado = limparTesteCobraSetor();
     else resultado = { ok: false, erro: 'Ação desconhecida: ' + acao };
   } catch(err) { resultado = { ok: false, erro: err.toString() }; }
   return jsonResponse(resultado);
@@ -2338,5 +2340,175 @@ function salvarConfigProp(dados) {
     sheet.appendRow(linha);
     SpreadsheetApp.flush();
     return { ok: true, data: reg };
+  });
+}
+
+// ================================================
+// BACKUP AUTOMÁTICO (CobraSetor)
+// Gera um .xlsx com a aba "clientes" inteira (todos os setores, todas as
+// colunas) + a aba "PAGAMENTOS", salva na pasta "Backup CobraSetor" do
+// Drive e (no automático) manda por e-mail com o arquivo anexado.
+// Gatilho diário ~6h (Brasília): só gera se AMANHÃ for dia 1, 5, 10, 15,
+// 20 ou 25 — a véspera do dia 1 é o último dia do mês (28, 29, 30 ou 31).
+// ================================================
+const BACKUP_EMAIL = 'jacksonsilva717171@gmail.com';
+const BACKUP_PASTA = 'Backup CobraSetor';
+const BACKUP_TZ    = 'America/Sao_Paulo';
+const BACKUP_DIAS  = [1, 5, 10, 15, 20, 25];
+
+/** Dia de AMANHÃ (fuso de Brasília) se for dia de backup; senão 0 */
+function diaDeBackupAmanha(agora) {
+  const amanha = new Date(agora.getTime() + 24 * 60 * 60 * 1000);
+  const dia = parseInt(Utilities.formatDate(amanha, BACKUP_TZ, 'd'), 10);
+  return BACKUP_DIAS.indexOf(dia) >= 0 ? dia : 0;
+}
+
+function _pastaBackup() {
+  const it = DriveApp.getFoldersByName(BACKUP_PASTA);
+  return it.hasNext() ? it.next() : DriveApp.createFolder(BACKUP_PASTA);
+}
+
+/** Gera o .xlsx, salva no Drive e devolve { blob, nome, arquivoId, totais } */
+function gerarArquivoBackup() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const carimbo = Utilities.formatDate(new Date(), BACKUP_TZ, 'yyyy-MM-dd_HH-mm');
+  const nome = 'Backup CobraSetor ' + carimbo + '.xlsx';
+  const abas = [SHEET_CLIENTES, SHEET_PAGAMENTOS];
+  const tmp = SpreadsheetApp.create('tmp-backup-cobrasetor-' + carimbo);
+  const totais = {};
+  try {
+    abas.forEach(nomeAba => {
+      const orig = ss.getSheetByName(nomeAba);
+      if (!orig) throw new Error('Aba não encontrada: ' + nomeAba);
+      const valores = orig.getDataRange().getValues();
+      const dest = tmp.insertSheet(nomeAba);
+      if (valores.length && valores[0].length) {
+        dest.getRange(1, 1, valores.length, valores[0].length).setValues(valores);
+        dest.getRange(1, 1, 1, valores[0].length).setFontWeight('bold');
+        dest.setFrozenRows(1);
+      }
+      const header = valores[0] || [];
+      const cId = nomeAba === SHEET_CLIENTES ? colIdx(header, 'id') : colIdx(header, 'cid');
+      totais[nomeAba] = {
+        linhas: Math.max(0, valores.length - 1),
+        comId:  cId >= 0 ? valores.slice(1).filter(r => String(r[cId]).trim()).length : null,
+      };
+    });
+    tmp.getSheets().forEach(sh => { if (abas.indexOf(sh.getName()) < 0) tmp.deleteSheet(sh); });
+    SpreadsheetApp.flush();
+
+    const resp = UrlFetchApp.fetch(
+      'https://docs.google.com/spreadsheets/d/' + tmp.getId() + '/export?format=xlsx',
+      { headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() }, muteHttpExceptions: true });
+    if (resp.getResponseCode() !== 200) throw new Error('exportação .xlsx falhou (HTTP ' + resp.getResponseCode() + ')');
+    const blob = resp.getBlob().setName(nome);
+    const arquivo = _pastaBackup().createFile(blob);
+    return { blob: blob, nome: nome, arquivoId: arquivo.getId(), totais: totais };
+  } finally {
+    DriveApp.getFileById(tmp.getId()).setTrashed(true);
+  }
+}
+
+/** Gatilho diário: só faz o backup na véspera dos dias de vencimento */
+function backupAutomatico() {
+  const dia = diaDeBackupAmanha(new Date());
+  if (!dia) return { ok: true, gerado: false };
+  const r = gerarArquivoBackup();
+  MailApp.sendEmail({
+    to: BACKUP_EMAIL,
+    subject: 'Backup CobraSetor - véspera do dia ' + dia,
+    body: 'Backup automático do CobraSetor (véspera do dia ' + dia + ').\n\n'
+        + 'Arquivo: ' + r.nome + '\n'
+        + 'Clientes: ' + r.totais[SHEET_CLIENTES].comId + '\n'
+        + 'Pagamentos: ' + r.totais[SHEET_PAGAMENTOS].comId + '\n\n'
+        + 'Uma cópia também ficou na pasta "' + BACKUP_PASTA + '" do Google Drive.',
+    attachments: [r.blob],
+  });
+  return { ok: true, gerado: true, dia: dia, nome: r.nome };
+}
+
+/** Botão "Baixar backup agora" do app (somente admin na tela) */
+function baixarBackupApp() {
+  const r = gerarArquivoBackup();
+  return {
+    ok: true,
+    nome: r.nome,
+    base64: Utilities.base64Encode(r.blob.getBytes()),
+    totalClientes: r.totais[SHEET_CLIENTES].comId,
+    linhasClientes: r.totais[SHEET_CLIENTES].linhas,
+    totalPagamentos: r.totais[SHEET_PAGAMENTOS].comId,
+  };
+}
+
+/**
+ * RODE UMA VEZ pelo editor (Executar → instalarGatilhoBackup): pede as
+ * permissões (Drive, e-mail, gatilhos) e cria o gatilho diário das 6h.
+ * Pode rodar de novo sem duplicar o gatilho.
+ */
+function instalarGatilhoBackup() {
+  ScriptApp.getProjectTriggers()
+    .filter(t => t.getHandlerFunction() === 'backupAutomatico')
+    .forEach(t => ScriptApp.deleteTrigger(t));
+  ScriptApp.newTrigger('backupAutomatico')
+    .timeBased().everyDays(1).atHour(6).inTimezone(BACKUP_TZ)
+    .create();
+  _pastaBackup();
+  Logger.log('Gatilho do backup instalado: todo dia ~6h (Brasília). Pasta: ' + BACKUP_PASTA);
+  return 'ok';
+}
+
+/** Teste manual pelo editor: gera e manda o e-mail na hora (assunto "teste") */
+function testarBackupAgora() {
+  const r = gerarArquivoBackup();
+  MailApp.sendEmail({
+    to: BACKUP_EMAIL,
+    subject: 'Backup CobraSetor - teste manual',
+    body: 'Teste do backup. Arquivo: ' + r.nome + '\nClientes: ' + r.totais[SHEET_CLIENTES].comId,
+    attachments: [r.blob],
+  });
+  Logger.log('Backup de teste enviado: ' + r.nome);
+}
+
+// ================================================
+// LIMPEZA DOS DADOS DE TESTE (somente setor "Setor 99 TESTE" + ids TST-)
+// ================================================
+const SETOR_TESTE = 'Setor 99 TESTE';
+
+function limparTesteCobraSetor() {
+  return comLockDeEscrita(() => {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const out = { ok: true, clientesRemovidos: 0, pagamentosRemovidos: 0, logsRemovidos: 0, abaRemovida: false };
+
+    const cli = ss.getSheetByName(SHEET_CLIENTES);
+    if (cli) {
+      const rows = cli.getDataRange().getValues();
+      const cId = colIdx(rows[0], 'id'), cSetor = colIdxSetor(rows[0]);
+      for (let i = rows.length - 1; i >= 1; i--) {
+        if (String(rows[i][cSetor]).trim() === SETOR_TESTE && String(rows[i][cId]).indexOf('TST-') === 0) {
+          cli.deleteRow(i + 1); out.clientesRemovidos++;
+        }
+      }
+    }
+    const pag = ss.getSheetByName(SHEET_PAGAMENTOS);
+    if (pag) {
+      const rows = pag.getDataRange().getValues();
+      const cCid = colIdx(rows[0], 'cid'), cSetor = colIdx(rows[0], 'setor');
+      for (let i = rows.length - 1; i >= 1; i--) {
+        if (String(rows[i][cSetor]).trim() === SETOR_TESTE && String(rows[i][cCid]).indexOf('TST-') === 0) {
+          pag.deleteRow(i + 1); out.pagamentosRemovidos++;
+        }
+      }
+    }
+    const log = ss.getSheetByName('DEBUG_LOG');
+    if (log) {
+      const rows = log.getDataRange().getValues();
+      for (let i = rows.length - 1; i >= 1; i--) {
+        if (String(rows[i][2]).indexOf('TST-FOLHA-') >= 0) { log.deleteRow(i + 1); out.logsRemovidos++; }
+      }
+    }
+    const aba = ss.getSheetByName(SETOR_TESTE);
+    if (aba) { ss.deleteSheet(aba); out.abaRemovida = true; }
+    SpreadsheetApp.flush();
+    return out;
   });
 }
