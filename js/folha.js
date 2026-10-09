@@ -206,6 +206,10 @@ function htmlFolhaCobranca(setor, dataISO) {
     </div>
     <div class="fl-instr">Marque com <strong>X</strong> a caixinha de cada cliente que pagou.</div>
     ${itens.length ? `<table class="fl-tab">
+      <colgroup>
+        <col style="width:11mm"><col style="width:35mm"><col style="width:34mm"><col>
+        <col style="width:25mm"><col style="width:19mm"><col style="width:14mm"><col style="width:21mm">
+      </colgroup>
       <thead><tr>
         <th class="fl-x">Pago</th><th>Código</th><th>Rua e número</th><th>Nome</th>
         <th>Telefone</th><th>Data de cobrança</th><th>Meses em atraso</th><th>Valor</th>
