@@ -207,8 +207,8 @@ function htmlFolhaCobranca(setor, dataISO) {
     <div class="fl-instr">Marque com <strong>X</strong> a caixinha de cada cliente que pagou. Se pagou mais de 1 mês, escreva quantos em <strong>"____ meses"</strong>.</div>
     ${itens.length ? `<table class="fl-tab">
       <colgroup>
-        <col style="width:17mm"><col style="width:33mm"><col style="width:31mm"><col>
-        <col style="width:25mm"><col style="width:19mm"><col style="width:14mm"><col style="width:21mm">
+        <col style="width:17mm"><col style="width:37mm"><col style="width:29mm"><col>
+        <col style="width:23mm"><col style="width:21mm"><col style="width:13mm"><col style="width:21mm">
       </colgroup>
       <thead><tr>
         <th class="fl-x">Pago</th><th>Código</th><th>Rua e número</th><th>Nome</th>
