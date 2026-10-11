@@ -85,8 +85,15 @@ async function loteSalvar(forma) {
   const btns = ['lt-btn-pix', 'lt-btn-vig'].map(id => document.getElementById(id));
   btns.forEach(b => { b.disabled = true; });
   try {
-    const r = await _postServidor('setFormaCobranca', { setor: _loteSetor, ids, forma });
-    if (!r || !r.ok) throw new Error((r && r.erro) || 'resposta inválida');
+    const r = await _postServidor('setFormaCobranca', { setor: _loteSetor, ids, forma }, { rotulo: 'Forma de cobrança em lote (' + nomeForma + ', ' + ids.length + ' cliente(s)) — ' + _loteSetor });
+    if (r.pendente) {
+      // não confirmado: fica em 'aguardando envio' (aviso vermelho já mostrado) e vale no aparelho
+      CLI = CLI.map(c => ids.includes(c.id) && _normSetor(c.setor) === _normSetor(_loteSetor) ? { ...c, formaCobranca: forma } : c);
+      localStorage.setItem('eps_cli', JSON.stringify(CLI));
+      loteRender(); renderAll();
+      return;
+    }
+    if (!r.ok) { loteAtualizaBotoes(); return; } // recusado: aviso vermelho já mostrado
     const ok = new Set(ids.filter(id => !(r.naoEncontrados || []).includes(id)));
     CLI = CLI.map(c => ok.has(c.id) && _normSetor(c.setor) === _normSetor(_loteSetor) ? { ...c, formaCobranca: forma } : c);
     localStorage.setItem('eps_cli', JSON.stringify(CLI));
@@ -95,7 +102,7 @@ async function loteSalvar(forma) {
     loteRender();
     renderAll();
   } catch (e) {
-    toast(`❌ Não salvou: ${/desconhecida/i.test(e.message) ? 'o servidor ainda não foi atualizado (deploy do Apps Script pendente)' : e.message}`, 'err');
+    avisoNaoSalvo('NÃO foi salvo (' + e.message + '). Tente de novo.');
     loteAtualizaBotoes();
   }
 }

@@ -526,17 +526,24 @@ async function fotoGravarBaixa() {
   _baixando = true;
   _fotoPasso(4);
   const prog = document.getElementById('ft-progresso');
-  const falhas = [];
+  const falhas = [];       // não salvas (ficaram em "aguardando envio")
+  const recusadas = [];    // o servidor recusou
+  const okClientes = [];   // todas as mensalidades confirmadas pelo servidor
   let k = 0;
   for (const s of sel) {
     k++;
-    prog.textContent = `⏳ Gravando ${k}/${sel.length}: ${s.it.c.nome} (${s.n} ${s.n > 1 ? 'meses' : 'mês'})...`;
+    prog.textContent = `⏳ Gravando ${k}/${sel.length}: ${s.it.c.nome} (${s.n} ${s.n > 1 ? 'meses' : 'mês'})… aguardando o servidor confirmar`;
+    let falhouCliente = false;
     for (const ms of s.meses) {
       const c = CLI.find(x => x.id === s.it.c.id && x.setor === s.it.c.setor) || s.it.c;
-      const { envio } = registrarPagamento(c, ms.ym, formaPadraoPagamento(c), 'Baixa pela folha (foto)');
-      const r = await envio;
-      if (!r || r.ok === false) falhas.push(`${s.it.c.nome} (${lbM(ms.ym)})`);
+      // Se um mês falhou, os seguintes só entram na fila (em ordem), sem tentar agora:
+      // assim o vencimento no servidor nunca anda para trás
+      const { r } = await registrarPagamento(c, ms.ym, formaPadraoPagamento(c), 'Baixa pela folha (foto)',
+        { soEnfileirar: falhouCliente, silencioso: true });
+      if (r.recusado) { recusadas.push(`${s.it.c.nome} (${lbM(ms.ym)}): ${r.erro}`); falhouCliente = true; break; }
+      if (!r.ok) { falhas.push(`${s.it.c.nome} (${lbM(ms.ym)})`); falhouCliente = true; }
     }
+    if (!falhouCliente) okClientes.push(s);
   }
   renderAll();
 
@@ -549,7 +556,7 @@ async function fotoGravarBaixa() {
     if (arr) {
       conferiu = true;
       const pvServ = new Map(arr.map(x => [String(x.id), parseInt(x.proxVenc) || 0]));
-      sel.forEach(s => {
+      okClientes.forEach(s => {
         const esperado = addM(s.meses[s.meses.length - 1].ym, 1);
         if ((pvServ.get(String(s.it.c.id)) || 0) === esperado) confirmados++;
       });
@@ -557,19 +564,25 @@ async function fotoGravarBaixa() {
   } catch (_) { /* sem conexão: avisa abaixo */ }
   _baixando = false;
 
+  const tOk = _fotoTotais(okClientes);
+  const nada = falhas.length + recusadas.length;
   document.getElementById('ft-final').innerHTML =
-    `<div class="ft-ok">✅ Baixa feita em <strong>${t.clientes}</strong> cliente(s) · ${t.mensalidades} mensalidade(s) · ${fR(t.total)}</div>`
-    + (conferiu
-      ? `<div class="ft-meta">${confirmados === sel.length ? '☁️ Confirmado no servidor para todos.' : `⚠️ Servidor confirmou ${confirmados} de ${sel.length} — sincronize e confira.`}</div>`
-      : '<div class="ft-meta">⚠️ Não foi possível conferir no servidor agora (sem conexão).</div>')
-    + (falhas.length ? `<div class="ft-aviso">⚠️ Falha ao enviar: ${falhas.map(esc).join(', ')}</div>` : '')
+    (okClientes.length
+      ? `<div class="ft-ok">✅ Baixa feita em <strong>${tOk.clientes}</strong> cliente(s) · ${tOk.mensalidades} mensalidade(s) · ${fR(tOk.total)}</div>`
+      : '<div class="ft-erro">❌ NENHUMA baixa foi salva no servidor.</div>')
+    + (conferiu && okClientes.length
+      ? `<div class="ft-meta">${confirmados === okClientes.length ? '☁️ Confirmado no servidor.' : `⚠️ Servidor confirmou ${confirmados} de ${okClientes.length} — sincronize e confira.`}</div>`
+      : '')
+    + (falhas.length ? `<div class="ft-erro">❌ NÃO salvas (ficaram em "aguardando envio" — use "Tentar de novo" no topo): ${falhas.map(esc).join(', ')}</div>` : '')
+    + (recusadas.length ? `<div class="ft-erro">❌ Recusadas pelo servidor: ${recusadas.map(esc).join(', ')}</div>` : '')
     + `<div class="fact">
         <button class="btn bp" onclick="fecharFotoModal();abrirFolhaModal('folha', '${esc(_fotoSetor)}')">🖨️ Imprimir folha nova</button>
         ${modeloReciboPapel(_fotoSetor) ? `<button class="btn bp" onclick="fecharFotoModal();abrirFolhaModal('recibos', '${esc(_fotoSetor)}')">🧾 Imprimir recibos</button>` : ''}
         <button class="btn bc" onclick="fecharFotoModal()">Fechar</button>
       </div>`;
   prog.textContent = '';
-  toast(`✅ Baixa feita em ${t.clientes} cliente(s) · ${t.mensalidades} mensalidade(s)`);
+  if (nada) avisoNaoSalvo(`${nada} mensalidade(s) NÃO foram salvas. Veja o resumo da baixa.`);
+  else toast(`✅ Baixa feita em ${tOk.clientes} cliente(s) · ${tOk.mensalidades} mensalidade(s) — salva no servidor`);
 }
 
 // ─────────────────────────────────────────────

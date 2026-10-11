@@ -86,11 +86,8 @@ async function _getServidor(acao, dados) {
 }
 
 /** POST direto (sem o fallback offline do sheetPost, que responde ok:true mesmo sem rede) */
-async function _postServidor(acao, dados) {
-  const r = await fetchComTimeout(SCRIPT_URL, {
-    method: 'POST', cache: 'no-store', body: JSON.stringify({ acao, ...dados }),
-  }, 15000);
-  return r.json();
+async function _postServidor(acao, dados, opts) {
+  return gravar(acao, dados, opts || {});   // gravação confiável (config.js)
 }
 
 async function carregarConfigsProp() {
@@ -258,16 +255,13 @@ async function ajSalvar() {
   const payload = { ...dados, usuario: _ajUsuario, atualizadoPor: USER.usuario };
   _cfgSalvarLocal(_ajUsuario, { ...dados });
   try {
-    const r = await _postServidor('salvarConfigProp', payload);
-    if (r && r.ok) {
+    // Só confirma com a resposta do servidor; falhou → aviso vermelho + 'aguardando envio' (gravar)
+    const r = await _postServidor('salvarConfigProp', payload, { rotulo: 'Configurações de cobrança — ' + _ajUsuario });
+    if (r.ok) {
       CFG_PROP[_ajUsuario] = r.data || { ...dados, atualizadoEm: new Date().toISOString(), atualizadoPor: USER.usuario };
       CFG_ORIGEM[_ajUsuario] = 'servidor';
       toast('✅ Configurações salvas no servidor — valem no celular e no notebook.');
-    } else {
-      toast('⚠️ Salvo só neste aparelho: o servidor ainda não aceita esta configuração (' + ((r && r.erro) || 'erro') + ').', 'warn');
     }
-  } catch (e) {
-    toast('⚠️ Sem conexão — salvo só neste aparelho por enquanto.', 'warn');
   } finally {
     btn.disabled = false; btn.textContent = '💾 Salvar';
     _ajStatus();

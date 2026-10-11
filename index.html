@@ -634,6 +634,7 @@ tr:hover td { background: rgba(255,107,0,.025); }
   gap: 5px; align-self: flex-start;
   flex-shrink: 0;
 }
+.cbtns-zap { display: flex; flex-direction: column; gap: 5px; }
 
 /* ═══════════════════════════════════════════
    RELATÓRIO — CARDS
@@ -945,7 +946,9 @@ textarea { resize: vertical; min-height: 60px; }
   .fg.full { grid-column: 1; }
   .cep-row { grid-template-columns: 1fr; }
   .strip-date { display: none; }
-  .cbtns { flex-direction: row; flex-wrap: wrap; }
+  /* celular: botões quebram linha dentro do cartão (antes passavam da borda e Editar sumia) */
+  .cbtns { flex-direction: row; flex-wrap: wrap; flex: 1 1 100%; width: 100%; min-width: 0; }
+  .cbtns-zap { flex: 1 1 100%; flex-direction: row; flex-wrap: wrap; }
   .fact { justify-content: stretch; }
   .fact .btn { flex: 1; justify-content: center; }
 }
@@ -1075,6 +1078,17 @@ textarea { resize: vertical; min-height: 60px; }
 .aj-previa { background: #0b141a; border-radius: var(--radius); padding: 8px 10px; margin-top: 6px; }
 .aj-previa small { color: var(--text3); font-size: 10px; }
 .aj-previa div { white-space: pre-wrap; font-size: 12px; color: #e9edef; background: #005c4b; border-radius: 8px; padding: 7px 9px; margin-top: 4px; line-height: 1.45; }
+
+/* Gravação confiável: aviso vermelho, faixa e lista de pendências */
+.toast.grave { background: var(--danger); color: #fff; border-color: #fff; font-weight: 700; font-size: 14px; box-shadow: 0 8px 30px rgba(255,59,59,.45); }
+.pend-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; background: rgba(255,59,59,.14); border: 1px solid rgba(255,59,59,.55); border-left: 4px solid var(--danger); border-radius: var(--radius); padding: 9px 12px; margin-bottom: 14px; color: #ffb4b4; font-weight: 700; font-size: 13px; animation: fadeUp .25s ease both; }
+.pend-bar #pend-txt { flex: 1; min-width: 180px; }
+.pend-btn { background: var(--danger); color: #fff; }
+.pend-btn:hover { filter: brightness(1.1); }
+.pend-item { display: flex; align-items: center; gap: 10px; justify-content: space-between; padding: 8px 10px; background: var(--bg3); border: 1px solid var(--border); border-left: 3px solid var(--danger); border-radius: var(--radius); font-size: 12px; }
+.pend-item small { display: block; color: var(--text2); margin-top: 2px; }
+.pend-item.conflito { border-left-color: var(--warn); }
+.ft-erro { background: rgba(255,59,59,.12); border: 1px solid rgba(255,59,59,.5); color: #ff9c9c; border-radius: var(--radius); padding: 9px 11px; font-weight: 700; font-size: 13px; margin: 6px 0; }
 
 /* Forma de cobrança em lote / Fila de cobrança */
 .lt-lista { max-height: 44vh; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; margin: 6px 0; }
@@ -1301,6 +1315,13 @@ textarea { resize: vertical; min-height: 60px; }
     <div class="sync-dot ok" id="sync-dot"></div>
     <span id="sync-txt">Sincronizado</span>
     <button class="btn bc bsm" onclick="syncAll()" style="margin-left:auto;">🔄 Sincronizar</button>
+  </div>
+
+  <!-- Alterações que NÃO foram confirmadas pelo servidor -->
+  <div class="pend-bar" id="pend-bar" style="display:none;">
+    <span id="pend-txt">⚠️ alterações aguardando envio</span>
+    <button class="btn bsm pend-btn" id="pend-btn" onclick="tentarPendentesAgora()">🔄 Tentar de novo</button>
+    <button class="btn bc bsm" onclick="abrirPendentes()">Ver</button>
   </div>
 
   <!-- ── DASHBOARD ── -->
@@ -2093,6 +2114,21 @@ textarea { resize: vertical; min-height: 60px; }
     <div id="ft-passo4" style="display:none;">
       <div class="ft-meta" id="ft-progresso"></div>
       <div id="ft-final"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════
+     MODAL — PENDENTES DE ENVIO
+════════════════════════════════════════════ -->
+<div class="mbg" id="pendbg">
+  <div class="modal" style="max-width:520px;">
+    <h2>⚠️ AGUARDANDO ENVIO AO SERVIDOR</h2>
+    <div class="ft-meta">Estas alterações NÃO foram confirmadas pelo servidor. Ao reenviar, o app confere antes se já foram gravadas — pagamento nunca entra em dobro.</div>
+    <div class="lt-lista" id="pend-lista"></div>
+    <div class="fact">
+      <button class="btn bc" onclick="fecharPendentes()">Fechar</button>
+      <button class="btn bp" onclick="tentarPendentesAgora()">🔄 Tentar de novo</button>
     </div>
   </div>
 </div>

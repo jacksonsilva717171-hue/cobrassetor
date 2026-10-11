@@ -67,6 +67,10 @@ function iniciarApp() {
   aplicarPermissoes();
   carregarLogo();
 
+  // Gravações não confirmadas: faixa no topo + reenvio automático (config.js)
+  atualizarFaixaPendentes();
+  if (pendentes().length) setTimeout(() => reenviarPendentes({}), 1500);
+
   // Pix / empresa / mensagens de cobrança por proprietário (ajustes.js)
   if (typeof carregarConfigsProp === 'function') carregarConfigsProp();
 

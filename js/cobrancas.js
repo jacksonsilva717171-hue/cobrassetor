@@ -258,9 +258,9 @@ function _renderCardPendente(c) {
     <div class="cbtns">
       ${btnPago}
       ${btnRem}
-      ${typeof botoesWhatsApp === 'function' ? botoesWhatsApp(c) : ''}
-      ${btnObs}
       ${btnEdit}
+      ${btnObs}
+      <span class="cbtns-zap">${typeof botoesWhatsApp === 'function' ? botoesWhatsApp(c) : ''}</span>
     </div>
   </div>`;
 }
@@ -387,17 +387,14 @@ async function desfazerPag() {
   if (!confirm(`Voltar vencimento de "${c.nome}" para ${lbM(pagVoltar)}?`)) return;
 
   const dados = { ...c, proxVenc: parseInt(pagVoltar) };
-  const r = await sheetPost('editCliente', dados);
-  if (r.ok) {
-    const idx = CLI.findIndex(x => x.id === pagId);
-    if (idx >= 0) CLI[idx].proxVenc = parseInt(pagVoltar);
-    localStorage.setItem('eps_cli', JSON.stringify(CLI));
-    closePag();
-    renderAll();
-    toast(`↩️ Vencimento de ${c.nome} voltado para ${lbM(pagVoltar)}`);
-  } else {
-    toast('❌ Erro ao desfazer.', 'err');
-  }
+  const r = await gravar('editCliente', dados, { rotulo: 'Desfazer pagamento — ' + c.nome });
+  if (r.recusado) return;
+  const idx = CLI.findIndex(x => x.id === pagId);
+  if (idx >= 0) CLI[idx].proxVenc = parseInt(pagVoltar);
+  localStorage.setItem('eps_cli', JSON.stringify(CLI));
+  closePag();
+  renderAll();
+  if (r.ok) toast(`↩️ Vencimento de ${c.nome} voltado para ${lbM(pagVoltar)} (salvo no servidor)`);
 }
 
 let _pagando = false; // guard contra toque duplo no mobile
@@ -410,15 +407,16 @@ async function confirmarPag() {
   if (!c || !pagMes) { _pagando = false; return; }
 
   const btn = document.getElementById('btn-confirmar-pag');
-  if (btn) { btn.disabled = true; btn.textContent = 'Salvando...'; }
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Salvando…'; }
 
   const novoPv = parseInt(addM(pagMes, 1));
   const obs    = document.getElementById('p-obs')?.value || '';
 
-  // Avisa se já existe pagamento para o mesmo mês
-  const pagDuplicado = PAG.some(p => p.cid === c.id && parseInt(p.mesPago) === parseInt(pagMes));
+  // Avisa se já existe pagamento para o mesmo mês (no servidor ou aguardando envio)
+  const pagDuplicado = PAG.some(p => p.cid === c.id && parseInt(p.mesPago) === parseInt(pagMes))
+    || pendentes().some(p => p.acao === 'addPagamento' && p.dados.cid === c.id && parseInt(p.dados.mesPago) === parseInt(pagMes));
   if (pagDuplicado) {
-    const ok = confirm(`⚠️ ${c.nome} já tem pagamento registrado para ${lbM(pagMes)}.\n\nConfirmar mesmo assim?`);
+    const ok = confirm(`⚠️ ${c.nome} já tem pagamento registrado (ou aguardando envio) para ${lbM(pagMes)}.\n\nConfirmar mesmo assim?`);
     if (!ok) {
       if (btn) { btn.disabled = false; btn.textContent = '✅ Confirmar Pagamento'; }
       _pagando = false;
@@ -426,15 +424,16 @@ async function confirmarPag() {
     }
   }
 
-  // Grava (local na hora + Sheets em background) — mesmo núcleo da baixa em lote
-  const { pag } = registrarPagamento(c, pagMes, pagForma, obs);
+  // Grava e ESPERA a confirmação do servidor — mesmo núcleo da baixa em lote
+  const { pag, r } = await registrarPagamento(c, pagMes, pagForma, obs);
 
-  // Fecha modal e atualiza lista na hora
   if (btn) { btn.disabled = false; btn.textContent = '✅ Confirmar Pagamento'; }
   _pagando = false;  // libera guard
+  if (r.recusado) return;   // servidor recusou: modal continua aberto, aviso vermelho já mostrado
   closePag();
   renderAll();
-  toast(`✅ ${c.nome} — Pago! Próx: Dia ${c.vencDia}/${lbM(novoPv)}`);
+  if (!r.ok) return;        // ficou em "aguardando envio" (aviso vermelho já mostrado) — sem recibo
+  toast(`✅ ${c.nome} — Pago e salvo no servidor! Próx: Dia ${c.vencDia}/${lbM(novoPv)}`);
 
   // Abre modal de recibo para o cobrador enviar ao cliente
   openRecibo(c, pag);
@@ -473,7 +472,7 @@ function mesPadraoPagamento(c) {
  * Retorna { pag, envio } — envio é a Promise do POST (o modal não espera;
  * a baixa em lote espera para confirmar cada gravação).
  */
-function registrarPagamento(c, mes, forma, obs) {
+async function registrarPagamento(c, mes, forma, obs, opts = {}) {
   const novoPv = parseInt(addM(mes, 1));
   const pag = {
     cid:     c.id,
@@ -488,7 +487,16 @@ function registrarPagamento(c, mes, forma, obs) {
     obs:     obs || '',
   };
 
-  // ── Atualiza estado local imediatamente (UI otimista) ──
+  // Grava e ESPERA o servidor confirmar (config.js → gravar). Sem confirmação
+  // não há "pago": fica em "aguardando envio" e é reenviado sem duplicar.
+  const r = await gravar('addPagamento', pag, {
+    rotulo: 'Pagamento ' + lbM(pag.mesPago) + ' — ' + c.nome,
+    soEnfileirar: !!opts.soEnfileirar,
+    silencioso: !!opts.silencioso,
+  });
+  if (r.recusado) return { pag, r };
+
+  // Confirmado OU guardado para envio: reflete no aparelho
   const idx = CLI.findIndex(x => x.id === c.id);
   if (idx >= 0) CLI[idx] = { ...CLI[idx], proxVenc: parseInt(novoPv) };
   localStorage.setItem('eps_cli', JSON.stringify(CLI));
@@ -499,19 +507,14 @@ function registrarPagamento(c, mes, forma, obs) {
   localStorage.setItem('eps_pag', JSON.stringify(pagLocal));
 
   // Bloqueia sync por 15s para não sobrescrever dados recém-salvos com uma
-  // resposta do Sheets que ainda não refletiu esta gravação (corrigido: era
-  // 300000ms/5min por engano — 5min de bloqueio fazia este aparelho ignorar
-  // TODAS as mudanças de outros usuários/aparelhos por 5 minutos após cada
-  // pagamento, não só a deste cliente específico).
+  // resposta do Sheets que ainda não refletiu esta gravação.
   // Persiste no sessionStorage para sobreviver a page reload (iOS retorna do WhatsApp recarregando a página)
   bloqSync = true;
   const _bloqExp = Date.now() + 15000; // 15 segundos
   sessionStorage.setItem('bloqSync_exp', _bloqExp.toString());
   setTimeout(() => { bloqSync = false; sessionStorage.removeItem('bloqSync_exp'); }, 15000);
 
-  // Envia para Sheets em background (não bloqueia a UI)
-  const envio = sheetPost('addPagamento', pag).catch(() => ({ ok: false, erro: 'falha de rede' }));
-  return { pag, envio };
+  return { pag, r };
 }
 
 // ─────────────────────────────────────────────
@@ -542,7 +545,9 @@ function closeRemarcar() {
   remarkId = null;
 }
 
+let _remarcando = false;
 async function confirmarRemarcar() {
+  if (_remarcando) return;
   const c = CLI.find(x => x.id === remarkId);
   if (!c) return;
 
@@ -556,13 +561,20 @@ async function confirmarRemarcar() {
     : c.obs || '';
 
   const dados = { ...c, status: 'remarcado', dataRemarcacao: data, obs: novoObs };
+  const btn = document.querySelector('#rbg .fact .btn:last-child');
+  _remarcando = true;
+  if (btn) { btn.disabled = true; btn.dataset.txt = btn.textContent; btn.textContent = '⏳ Salvando…'; }
 
   // Ação dedicada: grava só a coluna dataRemarcacao na planilha, sem risco de
   // sobrescrever o resto da linha com um snapshot local desatualizado.
-  const r = await sheetPost('remarcarCliente', { id: c.id, dataRemarcacao: data });
-  if (novoObs !== (c.obs || '')) {
-    sheetPost('editCliente', { ...c, obs: novoObs }).catch(() => {});
+  const r = await gravar('remarcarCliente', { id: c.id, dataRemarcacao: data }, { rotulo: 'Remarcação — ' + c.nome });
+  let rObs = { ok: true };
+  if (!r.recusado && novoObs !== (c.obs || '')) {
+    rObs = await gravar('editCliente', { ...c, obs: novoObs }, { rotulo: 'Observação da remarcação — ' + c.nome, silencioso: !r.ok });
   }
+  _remarcando = false;
+  if (btn) { btn.disabled = false; btn.textContent = btn.dataset.txt || '🔄 Remarcar'; }
+  if (r.recusado) return;
 
   const idx = CLI.findIndex(x => x.id === remarkId);
   if (idx >= 0) CLI[idx] = normalizarCliente(dados);
@@ -572,12 +584,7 @@ async function confirmarRemarcar() {
   renderAll();
 
   const retorno = new Date(data + 'T00:00:00').toLocaleDateString('pt-BR');
-  if (r && r.ok === false) {
-    console.error('remarcarCliente recusado pelo Apps Script:', r.erro);
-    toast(`⚠️ Remarcação de ${c.nome} salva localmente, mas o Sheets recusou: ${r.erro || 'erro desconhecido'}`, 'err');
-  } else {
-    toast(`🔵 ${c.nome} remarcado para ${retorno}`);
-  }
+  if (r.ok && rObs.ok) toast(`🔵 ${c.nome} remarcado para ${retorno} (salvo no servidor)`);
 }
 
 // ─────────────────────────────────────────────
@@ -600,21 +607,30 @@ function closeObs() {
   obsId = null;
 }
 
+let _salvandoObs = false;
 async function salvarObs() {
+  if (_salvandoObs) return;
   const c = CLI.find(x => x.id === obsId);
   if (!c) return;
 
   const texto = document.getElementById('ob-texto').value.trim();
   const dados = { ...c, obs: texto };
+  const btn = document.querySelector('#obg .fact .btn:last-child');
+  _salvandoObs = true;
+  if (btn) { btn.disabled = true; btn.dataset.txt = btn.textContent; btn.textContent = '⏳ Salvando…'; }
 
-  const r = await sheetPost('editCliente', dados);
+  const r = await gravar('editCliente', dados, { rotulo: 'Observação — ' + c.nome });
+  _salvandoObs = false;
+  if (btn) { btn.disabled = false; btn.textContent = btn.dataset.txt || '💾 Salvar'; }
+  if (r.recusado) return;
+
   const idx = CLI.findIndex(x => x.id === obsId);
   if (idx >= 0) CLI[idx] = normalizarCliente(dados);
   localStorage.setItem('eps_cli', JSON.stringify(CLI));
 
   closeObs();
   renderAll();
-  toast(`✅ Observação salva para ${c.nome}`);
+  if (r.ok) toast(`✅ Observação salva no servidor para ${c.nome}`);
 }
 
 // ─────────────────────────────────────────────

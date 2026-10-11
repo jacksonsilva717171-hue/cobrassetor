@@ -233,7 +233,7 @@ function st(c) {
     c.status = 'ativo';
     c.dataRemarcacao = '';
     // persiste a reativação em segundo plano sem bloquear UI
-    setTimeout(() => sheetPost('remarcarCliente', { id: c.id, dataRemarcacao: '' }).catch(() => {}), 100);
+    setTimeout(() => gravar('remarcarCliente', { id: c.id, dataRemarcacao: '' }, { silencioso: true, rotulo: 'Fim da remarcação — ' + c.nome }).catch(() => {}), 100);
   }
 
   return _stCalc(c);
@@ -440,23 +440,288 @@ async function sheetReq(acao, dados = {}) {
   }
 }
 
-async function sheetPost(acao, dados = {}) {
-  if (!SCRIPT_URL) return offlinePost(acao, dados);
+// ─────────────────────────────────────────────
+// GRAVAÇÃO CONFIÁVEL NO SERVIDOR
+// Só é "salvo" quando o Apps Script responde { ok: true }. Falha de rede,
+// tempo esgotado (25 s) ou resposta inválida → NÃO salvo: aviso vermelho e a
+// operação vai para a fila "pendentes de envio" (localStorage), reenviada
+// depois com checagem no servidor para não gravar em dobro.
+// (Antes: depois de 8 s o app respondia "ok" sozinho, sem ter gravado nada.)
+// ─────────────────────────────────────────────
+const ENVIO_TIMEOUT_MS = 25000;
+const PEND_LS = 'cobr_pendentes';
+
+/** POST direto: { ok:true, json } ou { ok:false, tipo:'rede'|'tempo'|'resposta'|'recusado', erro } */
+async function enviarAoServidor(acao, dados) {
+  if (!SCRIPT_URL) return { ok: false, tipo: 'rede', erro: 'servidor não configurado' };
+  let r;
   try {
-    setSyncStatus('sync', 'Salvando...');
-    const r    = await fetchComTimeout(SCRIPT_URL, {
-      method: 'POST',
-      cache:  'no-store',
-      body:   JSON.stringify({ acao, ...dados }),
-    }, 8000);
-    const json = await r.json();
-    setSyncStatus('ok', 'Salvo · ' + new Date().toLocaleTimeString('pt-BR'));
-    return json;
+    r = await fetchComTimeout(SCRIPT_URL, {
+      method: 'POST', cache: 'no-store', body: JSON.stringify({ acao, ...dados }),
+    }, ENVIO_TIMEOUT_MS);
   } catch (e) {
-    setSyncStatus('err', 'Sem conexão — dados locais');
-    return offlinePost(acao, dados);
+    return e && e.name === 'AbortError'
+      ? { ok: false, tipo: 'tempo', erro: 'o servidor não respondeu em 25 segundos' }
+      : { ok: false, tipo: 'rede', erro: 'sem conexão com a internet' };
+  }
+  let json;
+  try { json = await r.json(); } catch (_) { return { ok: false, tipo: 'resposta', erro: 'resposta inválida do servidor (' + r.status + ')' }; }
+  if (json && json.ok === true) return { ok: true, json };
+  return { ok: false, tipo: 'recusado', erro: (json && json.erro) || 'o servidor recusou', json };
+}
+
+// ── Fila de pendentes ──────────────────────────
+function pendentes() {
+  try { return JSON.parse(localStorage.getItem(PEND_LS) || '[]'); } catch (_) { return []; }
+}
+function _salvarPendentes(lista) {
+  try { localStorage.setItem(PEND_LS, JSON.stringify(lista)); } catch (_) { /* sem armazenamento */ }
+  atualizarFaixaPendentes();
+}
+
+/** Chave da operação: a mais nova substitui a mais antiga do mesmo alvo (nunca para pagamentos) */
+function _chavePendente(acao, d) {
+  if (acao === 'addCliente' || acao === 'editCliente') return 'cli:' + d.id;
+  if (acao === 'remarcarCliente') return 'rem:' + d.id;
+  if (acao === 'salvarConfigProp') return 'cfg:' + d.usuario;
+  if (acao === 'setFormaCobranca') return 'forma:' + d.setor + ':' + (d.ids || []).join(',');
+  if (acao === 'addPagamento') return 'pag:' + d.cid + ':' + d.mesPago + ':' + d.data;
+  return acao + ':' + Date.now() + Math.random();
+}
+
+function _rotuloPadrao(acao, d) {
+  const nome = d.nome ? ' — ' + d.nome : (d.id ? ' — ' + d.id : '');
+  return ({
+    addCliente: 'Cadastro de cliente', editCliente: 'Edição de cliente', remarcarCliente: 'Remarcação',
+    addPagamento: 'Pagamento' + (d.mesPago ? ' ' + lbM(d.mesPago) : ''), setFormaCobranca: 'Forma de cobrança em lote',
+    salvarConfigProp: 'Configurações de cobrança', delCliente: 'Exclusão de cliente',
+  }[acao] || acao) + nome;
+}
+
+function adicionarPendente(acao, dados, motivo, rotulo) {
+  const lista = pendentes();
+  const chave = _chavePendente(acao, dados);
+  const item = {
+    uid: 'P' + Date.now() + Math.random().toString(36).slice(2, 7),
+    chave, acao, dados, rotulo: rotulo || _rotuloPadrao(acao, dados),
+    criadoEm: new Date().toISOString(), falhouEm: new Date().toISOString(),
+    tipoFalha: motivo.tipo, erro: motivo.erro, tentativas: 1,
+  };
+  const i = lista.findIndex(p => p.chave === chave);
+  if (i >= 0) {
+    // cadastro ainda não enviado + edição nova = continua cadastro, com os dados mais novos
+    if (lista[i].acao === 'addCliente' && acao === 'editCliente') item.acao = 'addCliente';
+    item.uid = lista[i].uid; item.criadoEm = lista[i].criadoEm; item.tentativas = (lista[i].tentativas || 0) + 1;
+    lista[i] = item;
+  } else lista.push(item);
+  _salvarPendentes(lista);
+  return item;
+}
+
+/** Uma gravação nova bem-sucedida torna obsoleta a pendente antiga do mesmo alvo */
+function _descartarObsoletas(acao, dados) {
+  if (acao === 'addPagamento') return;
+  const chave = _chavePendente(acao, dados);
+  const lista = pendentes();
+  if (lista.some(p => p.chave === chave && p.acao === acao)) _salvarPendentes(lista.filter(p => !(p.chave === chave && p.acao === acao)));
+}
+
+/** Aviso vermelho bem visível (fica 8 s) */
+function avisoNaoSalvo(msg) {
+  toast('❌ ' + msg, 'err');
+  const t = document.getElementById('toast');
+  if (t) {
+    t.classList.add('grave');
+    clearTimeout(_toastTimer);
+    _toastTimer = setTimeout(() => { t.classList.remove('show'); t.classList.remove('grave'); }, 8000);
   }
 }
+
+/**
+ * Grava no servidor. Retorna { ok:true, ...resposta } só com confirmação real.
+ * opts.rotulo: texto da pendência · opts.silencioso: sem aviso (gravação automática)
+ * opts.soEnfileirar: não tenta agora, só põe na fila (ex.: meses seguintes de um pagamento que falhou)
+ * opts.semFila: falhou → não guarda (ex.: exclusão, que a pessoa refaz na hora)
+ */
+async function gravar(acao, dados = {}, opts = {}) {
+  if (opts.soEnfileirar) {
+    const item = adicionarPendente(acao, dados, { tipo: 'aguardando', erro: 'aguardando o envio anterior' }, opts.rotulo);
+    return { ok: false, pendente: true, uid: item.uid, erro: 'aguardando envio' };
+  }
+  setSyncStatus('sync', 'Salvando…');
+  const r = await enviarAoServidor(acao, dados);
+  if (r.ok) {
+    _descartarObsoletas(acao, dados);
+    setSyncStatus('ok', 'Salvo no servidor · ' + new Date().toLocaleTimeString('pt-BR'));
+    return { ...r.json, ok: true };
+  }
+  if (r.tipo === 'recusado') {
+    // o servidor respondeu e disse não: repetir não adianta → não vai para a fila
+    setSyncStatus('err', 'O servidor recusou a gravação');
+    if (!opts.silencioso) avisoNaoSalvo('NÃO foi salvo: o servidor recusou (' + r.erro + ').');
+    return { ok: false, recusado: true, erro: r.erro };
+  }
+  setSyncStatus('err', 'NÃO salvo — ' + r.erro);
+  if (opts.semFila) {
+    if (!opts.silencioso) avisoNaoSalvo('NÃO foi salvo (' + r.erro + '). Tente de novo.');
+    return { ok: false, erro: r.erro };
+  }
+  const item = adicionarPendente(acao, dados, r, opts.rotulo);
+  if (!opts.silencioso) avisoNaoSalvo('NÃO foi salvo (' + r.erro + '). Tente de novo — ficou em "aguardando envio".');
+  return { ok: false, pendente: true, uid: item.uid, erro: r.erro };
+}
+
+/** Compatibilidade: todas as gravações antigas passam pela gravação confiável */
+async function sheetPost(acao, dados = {}, opts = {}) {
+  return gravar(acao, dados, opts);
+}
+
+/** Só para despesas: o servidor não tem essas ações (ficam no aparelho, como sempre ficaram) */
+async function sheetPostLocal(acao, dados = {}) {
+  return offlinePost(acao, dados);
+}
+
+// ── Reenvio com checagem anti-duplicidade ──────
+let _reenviando = false;
+const ESPERA_APOS_TEMPO_MS = 120000; // depois de "tempo esgotado", o servidor pode ainda estar gravando
+
+/**
+ * Reenvia as pendências em ordem. Antes de reenviar, confere no servidor:
+ *  • pagamento: já existe um com mesmo cliente + mês pago + valor + dia → marca enviado, NÃO grava de novo;
+ *    se o vencimento do cliente no servidor já passou deste pagamento → "confira" (não reenvia sozinho)
+ *  • cadastro: já existe o mesmo id no setor → marca enviado (o servidor também nunca duplica id)
+ * Retorna { enviados, jaEstavam, falharam, aguardando, conflitos }.
+ */
+async function reenviarPendentes(opts = {}) {
+  if (_reenviando) return null;
+  const lista = pendentes();
+  const res = { enviados: 0, jaEstavam: 0, falharam: 0, aguardando: 0, conflitos: 0, semConexao: false };
+  if (!lista.length) return res;
+  _reenviando = true;
+  try {
+    let pags = null, clis = null;
+    const precisaPag = lista.some(p => p.acao === 'addPagamento');
+    const precisaCli = lista.some(p => p.acao === 'addPagamento' || p.acao === 'addCliente');
+    try {
+      if (precisaPag) pags = extArr(await _tentarSheetReq(SCRIPT_URL, 'getPagamentos', {}), 'data') || [];
+      if (precisaCli) clis = extArr(await _tentarSheetReq(SCRIPT_URL, 'getClientes', {}), 'data') || [];
+    } catch (_) {
+      res.semConexao = true; res.falharam = lista.length;
+      if (!opts.silencioso) avisoNaoSalvo('Ainda sem conexão — ' + lista.length + ' alteração(ões) continuam aguardando envio.');
+      return res;
+    }
+    const dia = v => { const d = new Date(v); return isNaN(d) ? String(v).slice(0, 10) : isoLocal(d); };
+    const travados = new Set(); // cliente com pagamento que falhou agora: os meses seguintes esperam
+    let restante = pendentes();
+
+    for (const p of lista) {
+      const d = p.dados;
+      if (p.tipoFalha === 'tempo' && Date.now() - new Date(p.falhouEm).getTime() < ESPERA_APOS_TEMPO_MS && !opts.forcar) {
+        res.aguardando++; if (d.cid) travados.add(d.cid); continue;
+      }
+      if (p.acao === 'addPagamento') {
+        if (travados.has(d.cid)) { res.aguardando++; continue; }
+        const ja = pags.some(x => String(x.cid) === String(d.cid) && parseInt(x.mesPago) === parseInt(d.mesPago)
+          && Math.abs((parseFloat(x.valor) || 0) - (parseFloat(d.valor) || 0)) < 0.005 && dia(x.data) === dia(d.data));
+        if (ja) { res.jaEstavam++; restante = restante.filter(x => x.uid !== p.uid); continue; }
+        const cli = clis.find(x => String(x.id) === String(d.cid));
+        if (cli && (parseInt(cli.proxVenc) || 0) > parseInt(d.novoPv)) {
+          res.conflitos++;
+          restante = restante.map(x => x.uid === p.uid ? { ...x, tipoFalha: 'conflito', erro: 'o vencimento no servidor já está depois deste pagamento — confira antes de enviar' } : x);
+          travados.add(d.cid); continue;
+        }
+      }
+      if (p.acao === 'addCliente' && clis.some(x => String(x.id) === String(d.id) && _normSetorEnvio(x.setor) === _normSetorEnvio(d.setor))) {
+        // já existe: manda como edição (idempotente) para valer a versão mais nova dos dados
+        const r = await enviarAoServidor('editCliente', d);
+        if (r.ok) { res.jaEstavam++; restante = restante.filter(x => x.uid !== p.uid); }
+        else { res.falharam++; restante = restante.map(x => x.uid === p.uid ? { ...x, tipoFalha: r.tipo, erro: r.erro, falhouEm: new Date().toISOString(), tentativas: (x.tentativas || 0) + 1 } : x); }
+        continue;
+      }
+      if (p.tipoFalha === 'conflito' && !opts.forcar) { res.conflitos++; continue; }
+      const r = await enviarAoServidor(p.acao, d);
+      if (r.ok) {
+        res.enviados++; restante = restante.filter(x => x.uid !== p.uid);
+        if (p.acao === 'addPagamento') pags.push({ ...d });
+      } else {
+        res.falharam++;
+        if (d.cid) travados.add(d.cid);
+        restante = restante.map(x => x.uid === p.uid ? { ...x, tipoFalha: r.tipo === 'recusado' ? 'recusado' : r.tipo, erro: r.erro, falhouEm: new Date().toISOString(), tentativas: (x.tentativas || 0) + 1 } : x);
+        if (r.tipo === 'rede') { res.semConexao = true; break; }
+      }
+    }
+    // preserva o que entrou na fila enquanto este reenvio rodava
+    const novos = pendentes().filter(x => !lista.some(o => o.uid === x.uid));
+    restante = restante.concat(novos);
+    _salvarPendentes(restante);
+    if (!opts.silencioso || res.enviados || res.jaEstavam) _avisoResultadoReenvio(res, restante.length);
+    return res;
+  } finally {
+    _reenviando = false;
+    atualizarFaixaPendentes();
+  }
+}
+
+function _normSetorEnvio(s) { return String(s || '').trim().toLowerCase(); }
+
+function _avisoResultadoReenvio(res, faltam) {
+  const ok = res.enviados + res.jaEstavam;
+  if (!faltam) { toast(`✅ Pendências enviadas: ${ok} salva(s) no servidor${res.jaEstavam ? ` (${res.jaEstavam} já estavam lá — não gravei de novo)` : ''}.`); return; }
+  const partes = [];
+  if (ok) partes.push(`${ok} enviada(s)`);
+  if (res.aguardando) partes.push(`${res.aguardando} aguardando o servidor confirmar`);
+  if (res.conflitos) partes.push(`${res.conflitos} para conferir`);
+  if (res.falharam) partes.push(`${res.falharam} ainda não enviada(s)`);
+  avisoNaoSalvo(`${faltam} alteração(ões) continuam aguardando envio (${partes.join(', ')}).`);
+}
+
+/** Faixa no topo: "N alterações aguardando envio — Tentar de novo" */
+function atualizarFaixaPendentes() {
+  const bar = document.getElementById('pend-bar');
+  if (!bar) return;
+  const n = pendentes().length;
+  bar.style.display = n ? '' : 'none';
+  const t = document.getElementById('pend-txt');
+  if (t) t.textContent = `⚠️ ${n} ${n > 1 ? 'alterações' : 'alteração'} aguardando envio`;
+}
+
+async function tentarPendentesAgora() {
+  const b = document.getElementById('pend-btn');
+  if (b) { b.disabled = true; b.textContent = 'Enviando…'; }
+  try { await reenviarPendentes({}); }
+  finally { if (b) { b.disabled = false; b.textContent = '🔄 Tentar de novo'; } renderPendentesLista(); if (typeof syncAll === 'function') syncAll(); }
+}
+
+function abrirPendentes() {
+  renderPendentesLista();
+  document.getElementById('pendbg').classList.add('open');
+}
+function fecharPendentes() { document.getElementById('pendbg').classList.remove('open'); }
+
+function renderPendentesLista() {
+  const el = document.getElementById('pend-lista');
+  if (!el) return;
+  const lista = pendentes();
+  el.innerHTML = lista.length ? lista.map(p => `
+    <div class="pend-item${p.tipoFalha === 'conflito' ? ' conflito' : ''}">
+      <div><strong>${esc(p.rotulo)}</strong>
+        <small>${esc(new Date(p.criadoEm).toLocaleString('pt-BR'))} · ${p.tentativas || 1} tentativa(s) · ${esc(p.erro || '')}</small></div>
+      <button class="btn bc bxs" onclick="descartarPendente('${p.uid}')">Descartar</button>
+    </div>`).join('')
+    : '<div class="empty">✅ Nada aguardando envio.</div>';
+}
+
+function descartarPendente(uid) {
+  const p = pendentes().find(x => x.uid === uid);
+  if (!p) return;
+  if (!confirm(`Descartar "${p.rotulo}"?\n\nEla NÃO será enviada ao servidor.`)) return;
+  _salvarPendentes(pendentes().filter(x => x.uid !== uid));
+  renderPendentesLista();
+  toast('🗑️ Pendência descartada.', 'warn');
+}
+
+// Internet voltou → tenta reenviar
+window.addEventListener('online', () => { if (USER && pendentes().length) reenviarPendentes({}); });
 
 // ─────────────────────────────────────────────
 // OFFLINE — localStorage fallback

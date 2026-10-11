@@ -385,7 +385,7 @@ async function salvarDesp() {
   };
 
   const acao = editDespId ? 'editDespesa' : 'addDespesa';
-  const r    = await sheetPost(acao, dados);
+  const r    = await sheetPostLocal(acao, dados); // despesas: o servidor não tem essas ações (ficam no aparelho)
 
   const idx = DESP.findIndex(d => d.id === dados.id);
   if (idx >= 0) DESP[idx] = dados; else DESP.push(dados);
@@ -402,7 +402,7 @@ function confirmarDelDesp(id) {
 }
 
 async function delDesp(id) {
-  await sheetPost('delDespesa', { id });
+  await sheetPostLocal('delDespesa', { id });
   DESP = DESP.filter(d => d.id !== id);
   localStorage.setItem('cobr_desp', JSON.stringify(DESP));
   renderDesp();

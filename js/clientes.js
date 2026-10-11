@@ -298,30 +298,27 @@ async function salvar() {
 
   const acao = editId ? 'editCliente' : 'addCliente';
   const btn  = document.querySelector('#mbg .btn.bp');
-  if (btn) { btn.disabled = true; btn.textContent = 'Salvando...'; }
+  if (_salvandoCli) return;              // trava o 2º clique
+  _salvandoCli = true;
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Salvando…'; }
 
-  // Atualiza local imediatamente (otimista)
+  // Só confirma depois da resposta real do servidor (gravar, config.js)
+  const eraEdicao = !!editId;
+  const r = await gravar(acao, dados, { rotulo: (eraEdicao ? 'Edição' : 'Cadastro') + ' de cliente — ' + dados.nome });
+  _salvandoCli = false;
+  if (btn) { btn.disabled = false; btn.textContent = '💾 Salvar Cliente'; }
+  if (r.recusado) return; // servidor disse não: fica no formulário (aviso vermelho já mostrado)
+
+  // Salvo no servidor OU guardado em "aguardando envio": reflete no aparelho
   const idx = CLI.findIndex(c => c.id === dados.id);
   if (idx >= 0) CLI[idx] = normalizarCliente(dados);
   else CLI.push(normalizarCliente(dados));
   localStorage.setItem('eps_cli', JSON.stringify(CLI));
-
-  if (btn) { btn.disabled = false; btn.textContent = '💾 Salvar Cliente'; }
-  toast(editId ? `✅ ${dados.nome} atualizado!` : `✅ Cliente ${dados.id} cadastrado!`);
   closeModal();
   renderAll();
-
-  // Envia para Sheets em background — avisa se o Apps Script recusar
-  // (resposta {ok:false} não é erro de rede, então não cai no catch)
-  sheetPost(acao, dados)
-    .then(r => {
-      if (r && r.ok === false) {
-        console.error('addCliente/editCliente recusado pelo Apps Script:', r.erro);
-        toast(`⚠️ ${dados.nome} salvo localmente, mas o Sheets recusou: ${r.erro || 'erro desconhecido'}`, 'err');
-      }
-    })
-    .catch(() => {});
+  if (r.ok) toast(eraEdicao ? `✅ ${dados.nome} salvo no servidor!` : `✅ Cliente ${dados.id} cadastrado e salvo no servidor!`);
 }
+let _salvandoCli = false;
 
 // ─────────────────────────────────────────────
 // EXCLUIR CLIENTE
@@ -332,18 +329,22 @@ function confirmarExcluir(id, nome) {
 }
 
 async function delCli(id) {
-  const r = await sheetPost('delCliente', { id });
+  // Exclusão só some da tela depois que o servidor confirmar (não vai para a fila)
+  const r = await gravar('delCliente', { id }, { semFila: true });
+  if (!r.ok) return;
   CLI = CLI.filter(c => c.id !== id);
   localStorage.setItem('eps_cli', JSON.stringify(CLI));
   renderAll();
-  toast('🗑️ Cliente removido.');
+  toast('🗑️ Cliente removido do servidor.');
 }
 
 async function limparObs(id) {
   const c = CLI.find(x => x.id === id);
   if (!c) return;
   const dados = { ...c, obs: '' };
-  await sheetPost('editCliente', dados);
+  const r = await gravar('editCliente', dados, { rotulo: 'Observação removida — ' + c.nome });
+  if (r.recusado) return;
+  if (!r.ok) { const idx = CLI.findIndex(x => x.id === id); if (idx >= 0) CLI[idx] = normalizarCliente(dados); renderCli(); return; }
   const idx = CLI.findIndex(x => x.id === id);
   if (idx >= 0) CLI[idx] = normalizarCliente(dados);
   localStorage.setItem('eps_cli', JSON.stringify(CLI));
