@@ -64,10 +64,12 @@ function podeVerSetor(setor) {
 // ─────────────────────────────────────────────
 /**
  * Clientes ativos do setor com vencimento até dataLimISO (atrasados + os que
- * vencem até o dia), na ordem de rua/rota do app (sortClientes / ordemRua).
+ * vencem até o dia), na ordem de rua/rota do app (sortClientes / ordemRua),
+ * de QUALQUER forma de cobrança. A folha usa só os "Vigilante (folha)"
+ * (listaFolhaCobranca); a fila de cobrança pelo WhatsApp usa esta base.
  * Retorna [{ ordem, c, meses:[{ym,data}], mesesAtraso, valorTotal }].
  */
-function listaFolhaCobranca(setor, dataLimISO) {
+function listaCobrancaBase(setor, dataLimISO) {
   if (!setor || !podeVerSetor(setor)) return [];
   const lim = _dataDeISO(dataLimISO);
   if (!lim) return [];
@@ -94,6 +96,23 @@ function listaFolhaCobranca(setor, dataLimISO) {
   });
   itens.forEach((it, i) => { it.ordem = i + 1; });
   return itens;
+}
+
+/** Folha / recibos / baixa pela foto: SÓ clientes "Vigilante (folha)" */
+function listaFolhaCobranca(setor, dataLimISO) {
+  const itens = listaCobrancaBase(setor, dataLimISO).filter(it => it.c.formaCobranca !== 'pix');
+  itens.forEach((it, i) => { it.ordem = i + 1; });
+  return itens;
+}
+
+/** Quantos clientes Pix (em aberto até a data) ficaram de fora da folha */
+function pixForaDaFolha(setor, dataLimISO) {
+  return listaCobrancaBase(setor, dataLimISO).filter(it => it.c.formaCobranca === 'pix').length;
+}
+
+function avisoPixFora(setor, dataLimISO) {
+  const n = pixForaDaFolha(setor, dataLimISO);
+  return n ? `${n} cliente${n > 1 ? 's' : ''} Pix não incluído${n > 1 ? 's' : ''}` : '';
 }
 
 // ─────────────────────────────────────────────
@@ -151,6 +170,8 @@ function _folhaAtualizaPrevia() {
     ? `📋 <strong>${itens.length}</strong> cliente(s) · total <strong>${fR(total)}</strong>`
       + (_folhaModo === 'recibos' ? `<br>🧾 <strong>${nRec}</strong> recibo(s) · ${Math.ceil(nRec / 6)} folha(s) A4` : '')
     : '🎉 Nenhum cliente com vencimento até esta data neste setor.';
+  const pix = avisoPixFora(setor, data);
+  if (pix) document.getElementById('fo-previa').innerHTML += `<br>💲 ${pix} (cobrança pelo WhatsApp)`;
 }
 
 function confirmarFolhaModal() {
@@ -217,7 +238,7 @@ function htmlFolhaCobranca(setor, dataISO) {
       <tbody>${linhas}</tbody>
     </table>` : '<div class="fl-vazio">Nenhum cliente com vencimento até esta data.</div>'}
     <div class="fl-total">
-      <span>${itens.length} cliente(s)</span>
+      <span>${itens.length} cliente(s)${avisoPixFora(setor, dataISO) ? ` <small class="fl-pix">· ${avisoPixFora(setor, dataISO)}</small>` : ''}</span>
       <span>VALOR TOTAL: <strong>${fR(total)}</strong></span>
     </div>
   </div>`;
@@ -423,7 +444,7 @@ function _fotoRenderRevisao() {
 
   const usados = (_fotoLeitura.fotos || []).map(f => `Foto ${f.foto}: ${f.usado === 'sonnet' ? 'revisada pelo Sonnet' : 'Haiku'}`).join(' · ');
   document.getElementById('ft-revisao').innerHTML =
-    `<div class="ft-meta">${esc(_fotoSetor)} · vencimento até ${_fmtData(_dataDeISO(_fotoData))} · ${esc(usados)}</div>`
+    `<div class="ft-meta">${esc(_fotoSetor)} · vencimento até ${_fmtData(_dataDeISO(_fotoData))} · ${esc(usados)}${avisoPixFora(_fotoSetor, _fotoData) ? ' · 💲 ' + avisoPixFora(_fotoSetor, _fotoData) : ''}</div>`
     + avisoFora + linhas;
   _fotoAtualizaResumo();
 }
@@ -730,7 +751,8 @@ function imprimirRecibos(setor, dataISO) {
   if (!podeVerSetor(setor)) { toast('🚫 Setor fora das suas permissões.', 'err'); return; }
   if (!modeloReciboPapel(setor)) { toast('⚠️ Este setor ainda não tem modelo de recibo de papel.', 'warn'); return; }
   const n = listaRecibosPapel(setor, dataISO).length;
-  abrirImpressao(`Recibos — ${setor} · ${n} recibo(s)`, htmlRecibosPapel(setor, dataISO), '0');
+  const pix = avisoPixFora(setor, dataISO);
+  abrirImpressao(`Recibos — ${setor} · ${n} recibo(s)${pix ? ' · ' + pix : ''}`, htmlRecibosPapel(setor, dataISO), '0');
 }
 
 /** Mostra/esconde os botões da tela de Cobrança conforme os setores do usuário */

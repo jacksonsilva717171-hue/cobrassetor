@@ -75,6 +75,7 @@ function iniciarApp() {
     document.getElementById('sec-proprietarios').classList.add('active');
     document.getElementById('ni-proprietarios').classList.add('active');
     renderProprietarios();
+    if (typeof retomarFilaSeHouver === 'function') setTimeout(retomarFilaSeHouver, 300);
     return;
   }
 
@@ -82,7 +83,10 @@ function iniciarApp() {
   document.getElementById('sec-dashboard').classList.add('active');
   document.getElementById('ni-dashboard').classList.add('active');
 
-  syncAll();
+  // Depois de carregar os clientes, retoma a fila de cobrança do dia se ficou pela metade
+  Promise.resolve(syncAll()).finally(() => {
+    if (typeof retomarFilaSeHouver === 'function') retomarFilaSeHouver();
+  });
 }
 
 // ─────────────────────────────────────────────
@@ -185,6 +189,8 @@ function aplicarPermissoes() {
   const btnN   = document.getElementById('btn-novo-cli');
   const mobN   = document.getElementById('mob-novo-cli');
   if (btnN) btnN.style.display = isCobr ? 'none' : '';
+  const btnLote = document.getElementById('btn-lote-forma');
+  if (btnLote) btnLote.style.display = isCobr ? 'none' : '';
   if (mobN) mobN.style.display = isCobr ? 'none' : '';
 
   // Strip title

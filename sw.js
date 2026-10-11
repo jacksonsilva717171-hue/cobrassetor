@@ -1,5 +1,5 @@
-// CobraSetor — Service Worker v31
-const CACHE = 'cobrassetor-v31';
+// CobraSetor — Service Worker v32
+const CACHE = 'cobrassetor-v32';
 const ASSETS = [
   './index.html',
   './js/config.js',
@@ -10,6 +10,7 @@ const ASSETS = [
   './js/recibo.js',
   './js/folha.js',
   './js/ajustes.js',
+  './js/fila.js',
   'https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Exo+2:wght@300;400;500;600&family=Oswald:wght@400;600;700&family=Source+Sans+3:wght@400;600&display=swap'
 ];
 

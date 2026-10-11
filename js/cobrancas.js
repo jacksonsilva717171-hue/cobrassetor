@@ -241,6 +241,7 @@ function _renderCardPendente(c) {
         <strong>${c.nome}</strong>
         ${badgeStatus}
         <span class="sb">${c.setor||'-'}</span>
+        ${c.formaCobranca === 'pix' ? '<span class="cb-pix">💲 Pix</span>' : ''}
       </div>
       <div style="font-size:12px;color:var(--text2);">
         📍 ${addr(c)}

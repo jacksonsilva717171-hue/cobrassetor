@@ -207,6 +207,9 @@ function _preencherFormCliente(c) {
   const px = document.getElementById('f-pix');
   if (px) px.value = c.pix || 'sim';
 
+  const fc = document.getElementById('f-forma-cobranca');
+  if (fc) fc.value = c.formaCobranca === 'pix' ? 'pix' : 'vigilante';
+
   document.getElementById('cep-h').innerHTML = '';
   setTimeout(() => { if (c.setor) onSetorChange(); }, 50);
 }
@@ -219,6 +222,8 @@ function _limparFormCliente() {
   if (fp) fp.value = 'dinheiro';
   const px = document.getElementById('f-pix');
   if (px) px.value = 'sim';
+  const fc = document.getElementById('f-forma-cobranca');
+  if (fc) fc.value = 'vigilante';
   document.getElementById('cep-h').innerHTML = '';
 }
 
@@ -268,6 +273,7 @@ async function salvar() {
     valor,
     formaPadrao:  document.getElementById('f-forma-padrao')?.value || 'dinheiro',
     pix:          document.getElementById('f-pix')?.value   || 'sim',
+    formaCobranca: document.getElementById('f-forma-cobranca')?.value === 'pix' ? 'pix' : 'vigilante',
     chavePix:     document.getElementById('f-chave-pix')?.value || '',
     lat:          parseFloat(document.getElementById('f-lat')?.value) || '',
     lng:          parseFloat(document.getElementById('f-lng')?.value) || '',

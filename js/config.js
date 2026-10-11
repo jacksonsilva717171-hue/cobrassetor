@@ -788,6 +788,8 @@ function normalizarCliente(c) {
       return parseFloat(v) || 0;
     })(),
     ordemRua:  parseInt(c.ordemRua) || 9999,
+    // Forma de cobrança: 'pix' ou 'vigilante' (folha). Vazio/antigo = vigilante
+    formaCobranca: String(c.formaCobranca || '').trim().toLowerCase() === 'pix' ? 'pix' : 'vigilante',
     status:    c.status || 'ativo',
   };
 }

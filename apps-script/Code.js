@@ -7,7 +7,7 @@ const SHEET_PAGAMENTOS = 'PAGAMENTOS';
 
 const COL_CLI = ['id','nome','tel','cep','rua','num','complemento','bairro','cidade','setor',
                  'vencDia','valor','pix','chavePix','lat','lng','obs','proxVenc','criadoPor','criadoEm',
-                 'dataRemarcacao'];
+                 'dataRemarcacao','formaCobranca'];
 const COL_PAG = ['cid','nome','setor','valor','forma','mesPago','novoPv','data','vigia','origem'];
 
 // Retorna o índice real da coluna lendo o cabeçalho da aba —
@@ -81,6 +81,7 @@ function doGet(e) {
     else if (acao === 'getConfigProp')   resultado = getConfigProp(e.parameter.usuario);
     else if (acao === 'gerarBackup')     resultado = baixarBackupApp();
     else if (acao === 'limparTesteCobraSetor') resultado = limparTesteCobraSetor();
+    else if (acao === 'prepararFormaCobranca') resultado = prepararFormaCobranca();
     else resultado = { ok: false, erro: 'Ação desconhecida: ' + acao };
   } catch(err) { resultado = { ok: false, erro: err.toString() }; }
   return jsonResponse(resultado);
@@ -559,6 +560,7 @@ function doPost(e) {
     else if (acao === 'confirmarPagamentoPix') resultado = confirmarPagamentoPix(body, etapas);
     else if (acao === 'importarLoteSetores')   resultado = importarLoteSetores(body);
     else if (acao === 'salvarConfigProp')      resultado = salvarConfigProp(body);
+    else if (acao === 'setFormaCobranca')      resultado = setFormaCobranca(body);
     else { resultado = { ok: false, erro: 'Ação desconhecida: ' + acao }; etapas.push('ação desconhecida'); }
     etapas.push('resultado final: ' + JSON.stringify(resultado));
   } catch(err) {
@@ -686,7 +688,8 @@ function montarLinhaCliente(header, dados, linhaExistente) {
       return linhaExistente ? linhaExistente[idx] : '';
     }
     if (dados[col] !== undefined) return dados[col];
-    return linhaExistente ? linhaExistente[idx] : '';
+    // coluna nova (ex.: formaCobranca) ainda não existe na linha antiga → vazio
+    return linhaExistente && linhaExistente[idx] !== undefined ? linhaExistente[idx] : '';
   });
 }
 
@@ -704,6 +707,9 @@ function addCliente(dados) {
     if (ids.includes(String(dados.id))) return editClienteImpl(dados, sheet, rows, header);
 
     // usa cabeçalho real pra montar a linha, com tratamento especial da coluna setor
+    // Forma de cobrança: coluna localizada/criada pelo NOME (nunca pela posição)
+    ensureHeaderColumn(sheet, header, 'formaCobranca');
+    dados.formaCobranca = dados.formaCobranca === 'pix' ? 'pix' : 'vigilante';
     const row = montarLinhaCliente(header, dados, null);
     const linhaAntes = sheet.getLastRow();
     sheet.appendRow(row);
@@ -737,6 +743,9 @@ function editCliente(dados) {
 // (adquire o lock) quanto por addCliente quando o id já existe (já está
 // dentro do lock de addCliente; pegar o lock de novo aqui travaria).
 function editClienteImpl(dados, sheet, rows, header) {
+  // Forma de cobrança: só grava se veio no payload; senão mantém o que está na planilha
+  ensureHeaderColumn(sheet, header, 'formaCobranca');
+  if (dados.formaCobranca !== undefined) dados.formaCobranca = dados.formaCobranca === 'pix' ? 'pix' : 'vigilante';
   const cId   = colIdx(header, 'id');
   const idCol = cId >= 0 ? cId : 0;
   for (let i = 1; i < rows.length; i++) {
@@ -2515,5 +2524,75 @@ function limparTesteCobraSetor() {
     if (aba) { ss.deleteSheet(aba); out.abaRemovida = true; }
     SpreadsheetApp.flush();
     return out;
+  });
+}
+
+// ================================================
+// FORMA DE COBRANÇA DO CLIENTE (CobraSetor): 'vigilante' (folha) ou 'pix'
+// Coluna "formaCobranca" na aba clientes, localizada SEMPRE pelo nome do
+// cabeçalho (ensureHeaderColumn cria no final se não existir — não desloca
+// nenhuma coluna). Célula vazia = 'vigilante' (padrão de quem já existia).
+// ================================================
+function _contagemFormaCobranca(rows) {
+  const header = rows[0];
+  const cId = colIdx(header, 'id'), cSetor = colIdxSetor(header), cForma = colIdx(header, 'formaCobranca');
+  const porSetor = {};
+  let total = 0;
+  rows.slice(1).forEach(r => {
+    if (!String(r[cId]).trim()) return;
+    total++;
+    const setor = String(r[cSetor] || '').trim() || '(sem setor)';
+    const forma = cForma >= 0 && String(r[cForma]).trim() === 'pix' ? 'pix' : 'vigilante';
+    porSetor[setor] = porSetor[setor] || { total: 0, vigilante: 0, pix: 0 };
+    porSetor[setor].total++;
+    porSetor[setor][forma]++;
+  });
+  return { total: total, porSetor: porSetor };
+}
+
+/** Cria a coluna (se faltar) e devolve a contagem por setor e por forma — não altera nenhum dado */
+function prepararFormaCobranca() {
+  return comLockDeEscrita(() => {
+    const sheet  = getOrCreateSheet(SHEET_CLIENTES, COL_CLI);
+    const header = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+    const antes  = header.length;
+    const cForma = ensureHeaderColumn(sheet, header, 'formaCobranca');
+    SpreadsheetApp.flush();
+    const rows = sheet.getDataRange().getValues();
+    const cont = _contagemFormaCobranca(rows);
+    return { ok: true, colunaCriada: header.length > antes, colunaFormaCobranca: cForma + 1,
+             colunas: rows[0].map(String), total: cont.total, porSetor: cont.porSetor };
+  });
+}
+
+/** Marca vários clientes de um setor como 'pix' ou 'vigilante' (só a célula formaCobranca) */
+function setFormaCobranca(dados) {
+  const forma = dados && dados.forma === 'pix' ? 'pix' : (dados && dados.forma === 'vigilante' ? 'vigilante' : null);
+  const setor = String((dados && dados.setor) || '').trim();
+  const ids   = (dados && Array.isArray(dados.ids)) ? dados.ids.map(x => String(x).trim()).filter(Boolean) : [];
+  if (!forma) return { ok: false, erro: 'forma inválida (use pix ou vigilante)' };
+  if (!setor || !ids.length || ids.length > 1000) return { ok: false, erro: 'setor ou ids inválidos' };
+
+  return comLockDeEscrita(() => {
+    const sheet  = getOrCreateSheet(SHEET_CLIENTES, COL_CLI);
+    const rows   = sheet.getDataRange().getValues();
+    const header = rows[0];
+    const cForma = ensureHeaderColumn(sheet, header, 'formaCobranca');
+    const cId    = colIdx(header, 'id'), cSetor = colIdxSetor(header);
+    const alvo   = new Set(ids);
+    const alterados = [];
+    for (let i = 1; i < rows.length; i++) {
+      const id = String(rows[i][cId]).trim();
+      if (alvo.has(id) && String(rows[i][cSetor]).trim().toLowerCase() === setor.toLowerCase()) {
+        const cel = sheet.getRange(i + 1, cForma + 1);
+        cel.setNumberFormat('@');
+        cel.setValue(forma);
+        alterados.push(id);
+      }
+    }
+    SpreadsheetApp.flush();
+    if (alterados.length) atualizaAbaSetor(setor);
+    return { ok: true, forma: forma, alterados: alterados.length,
+             naoEncontrados: ids.filter(id => alterados.indexOf(id) < 0) };
   });
 }
