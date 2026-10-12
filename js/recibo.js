@@ -20,6 +20,7 @@ let _reciboAtual = null;
 //   alt      — texto alternativo do logo na tela
 //   destaque — palavra inicial da empresa pintada com a cor da linha
 //   zapSub / zapTel — subtítulo/telefone diferentes no texto do WhatsApp
+//   assinatura — nome escrito como texto acima da linha de assinatura
 const RECIBO_IDENTIDADES = {
   preto: {
     empresa: 'GRUPO EPS',
@@ -42,6 +43,7 @@ const RECIBO_IDENTIDADES = {
     classe:   'header-elite',
     alt:      'Elite Segurança',
     destaque: 'ELITE',
+    assinatura: 'Vinicius', // nome digitado acima da linha (não é imagem) — igual ao RECIBOS.pdf
   },
   widja: {
     empresa: 'DIRECT SEG',
@@ -129,6 +131,12 @@ function _extrasHtml(emp) {
   return h + '</div>';
 }
 
+/** Nome digitado acima da linha de assinatura (só quem tem emp.assinatura, ex.: Vinicius) */
+function _assinNomeHtml(emp) {
+  return '<div style="font-family:Arial,Helvetica,sans-serif;font-size:17px;font-weight:700;font-style:italic;color:#111;line-height:1.15;margin:10px 40px 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + emp.assinatura + '</div>'
+    + '<hr style="border:none;border-top:1px solid #555;margin:2px 40px 4px;"><p style="font-size:10px;color:#555;margin:0;font-weight:700;letter-spacing:1px;">ASSINATURA</p>';
+}
+
 function _headerHtml(emp) {
   const L = [];
   if (emp.classe) {
@@ -198,8 +206,8 @@ function _buildReciboHTML(c, pag) {
       <div class="rec-stamp">PAGO</div>
       <p>Gerado por <strong>CobraSetor</strong> · Pagamento confirmado ✅</p>
       <div class="rec-assin">
-        <hr style="border:none;border-top:1px solid #ccc;margin:8px 40px 4px;">
-        <p style="font-size:10px;color:#999;margin:0;">Assinatura do Cobrador</p>
+        ${empresa.assinatura ? _assinNomeHtml(empresa) : `<hr style="border:none;border-top:1px solid #ccc;margin:8px 40px 4px;">
+        <p style="font-size:10px;color:#999;margin:0;">Assinatura do Cobrador</p>`}
       </div>
     </div>`;
 }
@@ -342,7 +350,7 @@ function _printRecibo(c, pag) {
     + obsHtml
     + '</div>'
     + _extrasHtml(empresa)
-    + '<div class="rod"><div class="stamp">PAGO</div><p class="ft">Gerado por <strong>CobraSetor</strong> · Pagamento confirmado ✅</p><div class="assin"><hr style="border:none;border-top:1px solid #ccc;margin:8px 40px 4px;"><p>Assinatura do Cobrador</p></div></div>'
+    + '<div class="rod"><div class="stamp">PAGO</div><p class="ft">Gerado por <strong>CobraSetor</strong> · Pagamento confirmado ✅</p><div class="assin">' + (empresa.assinatura ? _assinNomeHtml(empresa) : '<hr style="border:none;border-top:1px solid #ccc;margin:8px 40px 4px;"><p>Assinatura do Cobrador</p>') + '</div></div>'
     + '<script>window.onload=function(){window.print();};<\/script></body></html>';
 
   const w = window.open('', '_blank', 'width=640,height=900');

@@ -694,7 +694,7 @@ function _quebra2(txt, max) {
 
 const _ICONE_ZAP = '<svg viewBox="0 0 24 24" class="re-zap" aria-hidden="true"><circle cx="12" cy="12" r="10" fill="none" stroke="#000" stroke-width="2"/><path d="M8.2 6.9c.3-.3.8-.3 1 .1l1 1.9c.2.3.1.7-.1 1l-.7.7c.5 1.2 1.6 2.4 2.9 3l.7-.7c.3-.3.7-.3 1-.1l1.9 1c.4.2.4.7.1 1l-.9.9c-.6.6-1.6.7-2.4.3-2.2-1.1-3.9-2.8-5-5-.4-.8-.3-1.8.3-2.4z" fill="#000"/></svg>';
 
-/** Um recibo GRUPO ELITE (126 × 62 mm), igual ao RECIBOS.pdf, assinatura em branco */
+/** Um recibo GRUPO ELITE (126 × 62 mm), igual ao RECIBOS.pdf, com o nome digitado acima de ASSINATURA */
 function _reciboEliteHTML(r) {
   const c = r.c;
   const [ext1, ext2] = _quebra2(valorPorExtenso(r.valor), 46);
@@ -724,6 +724,7 @@ function _reciboEliteHTML(r) {
     <div class="re-prov">Proveniente de <b><i>SERVIÇO DE SEGURANÇA ELETRÔNICA.</i></b></div>
     <div class="re-data"><span class="re-bl re-bl1">${dia}</span>de<span class="re-bl re-bl2">${mes}</span>de<span class="re-bl re-bl3">${ano}</span></div>
     <div class="re-clareza">Para maior clareza, firmamos o presente</div>
+    <div class="re-assin-nome">${esc(RECIBO_IDENTIDADES.elite2022.assinatura || '')}</div>
     <div class="re-assin">ASSINATURA</div>
   </div>`;
 }
